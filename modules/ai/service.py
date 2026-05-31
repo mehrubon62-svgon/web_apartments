@@ -26,6 +26,7 @@ from config import (
     AI_MAX_TOKENS,
     AI_APP_URL,
     AI_APP_TITLE,
+    AI_FALLBACK_MODELS,
 )
 
 
@@ -48,19 +49,42 @@ def is_configured() -> bool:
     return bool(AI_API_KEY)
 
 
+def _model_chain(primary: str) -> list[str]:
+    """Primary model first, then configured fallbacks (deduped)."""
+    chain = [primary]
+    for m in AI_FALLBACK_MODELS:
+        if m not in chain:
+            chain.append(m)
+    return chain
+
+
 def _post(payload: dict[str, Any], timeout: float = 60.0) -> dict[str, Any]:
+    """POST to the chat-completions endpoint, retrying across fallback models
+    when the chosen one is unavailable/rate-limited (404/429)."""
     if not is_configured():
         raise AIError("AI is not configured. Set AI_API_KEY in your environment.")
     url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.post(url, headers=_headers(), json=payload)
-            resp.raise_for_status()
-            return resp.json()
-    except httpx.HTTPStatusError as exc:
-        raise AIError(f"AI provider error {exc.response.status_code}: {exc.response.text[:300]}") from exc
-    except httpx.HTTPError as exc:
-        raise AIError(f"AI request failed: {exc}") from exc
+
+    chain = _model_chain(payload.get("model") or AI_MODEL)
+    last_err = "no model attempted"
+    with httpx.Client(timeout=timeout) as client:
+        for model in chain:
+            body = {**payload, "model": model}
+            try:
+                resp = client.post(url, headers=_headers(), json=body)
+                if resp.status_code in (404, 429):
+                    # Model gone or rate-limited -> try the next fallback.
+                    last_err = f"{resp.status_code}: {resp.text[:160]}"
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as exc:
+                last_err = f"{exc.response.status_code}: {exc.response.text[:160]}"
+                continue
+            except httpx.HTTPError as exc:
+                last_err = str(exc)
+                continue
+    raise AIError(f"All AI models failed. Last error: {last_err}")
 
 
 def chat(messages: list[dict[str, Any]], temperature: float = 0.4, model: str | None = None) -> str:

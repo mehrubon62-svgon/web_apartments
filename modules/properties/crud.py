@@ -11,6 +11,7 @@ from models import (
     Tour,
     DealType,
     PropertyType,
+    MediaKind,
 )
 
 
@@ -247,6 +248,18 @@ def heuristic_review(prop: Property, stats: dict) -> dict:
 
 def has_tour(db: Session, property_id: int) -> bool:
     return db.query(Tour).filter(Tour.property_id == property_id).first() is not None
+
+
+def cover_url(prop: Property) -> str | None:
+    """Card cover = the first real PHOTO (never a 360 panorama, which looks
+    distorted as a flat thumbnail). Falls back to the lowest-order media if a
+    listing somehow has only panoramas."""
+    photos = [m for m in prop.media if m.type == MediaKind.photo]
+    if photos:
+        return sorted(photos, key=lambda m: m.order)[0].url
+    if prop.media:
+        return sorted(prop.media, key=lambda m: m.order)[0].url
+    return None
 
 
 def is_favorited(db: Session, user_id: int, property_id: int) -> bool:
