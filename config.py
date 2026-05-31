@@ -48,11 +48,12 @@ MAPBOX_GEOCODING_URL = os.getenv(
     "https://api.mapbox.com/geocoding/v5/mapbox.places",
 )
 
-# ===== Stripe (payments) =====
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "http://localhost:3000/bookings?paid=1")
-STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "http://localhost:3000/bookings?canceled=1")
+# ===== Payments (built-in MockPay gateway, Stripe-like, no external keys) =====
+# Base URL where the hosted checkout page is served (this API itself).
+PAYMENTS_BASE_URL = os.getenv("PAYMENTS_BASE_URL", "http://localhost:8000")
+PAYMENT_CURRENCY = os.getenv("PAYMENT_CURRENCY", "usd")
+# Minutes a checkout session stays valid before it expires.
+PAYMENT_SESSION_TTL_MIN = int(os.getenv("PAYMENT_SESSION_TTL_MIN", "30"))
 
 # ===== Moderation =====
 # Number of complaints against a seller that triggers automatic AI moderation.

@@ -19,6 +19,7 @@ from modules.history.router import router as history_router
 from modules.spatial_qa.router import router as spatial_qa_router
 from modules.agent.router import router as agent_router
 from modules.bookings.router import router as bookings_router
+from modules.payments.router import router as payments_router
 from modules.requests.router import router as requests_router
 from modules.trackers.router import router as trackers_router
 from modules.recommendations.router import router as recommendations_router
@@ -50,8 +51,9 @@ app = FastAPI(
     version="1.0.0",
     description=(
         "AI-powered real estate marketplace: map + catalog, 360° tours with Spatial Q&A, "
-        "a tool-using AI agent (OpenRouter), bookings (Stripe), price tracking, and "
-        "automatic complaint moderation. All heavy work runs on Celery + Redis."
+        "a tool-using AI agent (OpenRouter), bookings with a built-in MockPay gateway, "
+        "price tracking, and automatic complaint moderation. All heavy work runs on "
+        "Celery + Redis."
     ),
     swagger_ui_parameters={"persistAuthorization": True, "tryItOutEnabled": True},
     lifespan=lifespan,
@@ -79,6 +81,7 @@ app.include_router(agent_router)
 
 # Transactions
 app.include_router(bookings_router)
+app.include_router(payments_router)
 app.include_router(requests_router)
 app.include_router(trackers_router)
 

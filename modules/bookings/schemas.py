@@ -33,6 +33,6 @@ class BookingList(BaseModel):
 
 class CheckoutResponse(BaseModel):
     booking_id: int
-    checkout_url: str | None = None
-    # When Stripe isn't configured we return a dev payment link instead.
-    dev_mode: bool = False
+    # MockPay hosted checkout page URL — open it to pay.
+    checkout_url: str
+    payment_token: str

@@ -266,12 +266,32 @@ class Booking(Base):
 
     status = Column(SQLEnum(BookingStatus), default=BookingStatus.pending, nullable=False, index=True)
     payment_status = Column(SQLEnum(PaymentStatus), default=PaymentStatus.unpaid, nullable=False, index=True)
-    stripe_session_id = Column(String(255), nullable=True, index=True)
+    payment_token = Column(String(64), nullable=True, index=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     property = relationship("Property")
     renter = relationship("User")
+
+
+class PaymentSession(Base):
+    """A mock payment session (our own 'MockPay' gateway, Stripe-like flow).
+
+    Created when a renter starts checkout. The hosted checkout page reads it by
+    token, the user 'pays', and we mark the session paid + confirm the booking.
+    """
+    __tablename__ = "payment_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="usd", nullable=False)
+    status = Column(String(20), default="open", nullable=False)  # open|paid|cancelled|expired
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    booking = relationship("Booking")
 
 
 # ===== Purchase requests (sale) / viewing requests =====

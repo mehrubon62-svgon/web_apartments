@@ -10,7 +10,6 @@ python-multipart
 httpx
 celery
 redis
-stripe
 numpy
 faker
 psycopg2-binary

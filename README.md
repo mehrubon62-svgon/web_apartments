@@ -2,9 +2,9 @@
 
 An AI-powered real estate marketplace API built with **FastAPI**. Map + catalog,
 360° tours with **Spatial Q&A**, a tool-using **AI agent**, online bookings with
-**Stripe**, price tracking, personalized recommendations, and **automatic
-complaint moderation**. All heavy work runs on **Celery + Redis**, with realtime
-notifications delivered over WebSockets.
+a built-in **MockPay** payment gateway, price tracking, personalized
+recommendations, and **automatic complaint moderation**. All heavy work runs on
+**Celery + Redis**, with realtime notifications delivered over WebSockets.
 
 ## Tech stack
 
@@ -16,16 +16,18 @@ notifications delivered over WebSockets.
 | Realtime | WebSocket `/ws` bridged to Celery via Redis pub/sub |
 | Auth | JWT (access + refresh), role-based, Google OAuth |
 | AI | OpenRouter (OpenAI-compatible) — tool calling + vision |
-| Payments | Stripe Checkout (with a dev fallback) |
+| Payments | Built-in MockPay gateway (Stripe-like hosted checkout, no keys) |
 | Geocoding / map | Mapbox |
 | Storage | Local disk (`/media-files`), Supabase-Storage-ready contract |
 
-> **Design notes.** The brief specified Supabase/Claude. To keep the project
-> fully runnable for free and offline, this implementation uses a
+> **Design notes.** The brief specified Supabase/Claude/Stripe. To keep the
+> project fully runnable for free and offline, this implementation uses a
 > provider-agnostic AI layer (defaults to OpenRouter's free tier, switchable to
 > Claude/Gemini via env vars), local file storage behind a swappable upload
-> contract, and WebSocket+Redis realtime instead of Supabase Realtime. Behaviour
-> is the same; only the provider changes.
+> contract, WebSocket+Redis realtime instead of Supabase Realtime, and a
+> self-contained **MockPay** gateway that mimics a hosted Stripe Checkout
+> (payment session → hosted card page → confirmation). Behaviour is the same;
+> only the provider changes.
 
 ## Roles
 
@@ -82,8 +84,8 @@ All keys are environment variables (see `.env.example`). Notable ones:
 - `AI_API_KEY`, `AI_MODEL` — OpenRouter key + tool-capable model
   (default `google/gemma-4-31b-it:free`).
 - `DATABASE_URL` — SQLite by default; set a Postgres/Supabase URL for production.
-- `STRIPE_SECRET_KEY` — enables Stripe Checkout; if unset, bookings use a dev
-  confirmation endpoint so the flow is testable without keys.
+- `STRIPE_SECRET_KEY` — *(removed)* payments use the built-in MockPay gateway;
+  open the returned `checkout_url`, pay with test card `4242 4242 4242 4242`.
 - `MAPBOX_TOKEN` — enables address geocoding (manual pin always wins).
 - `COMPLAINT_THRESHOLD` — complaints against a seller that trigger AI moderation
   (default 3).
@@ -91,8 +93,9 @@ All keys are environment variables (see `.env.example`). Notable ones:
 ## Modules / API groups
 
 Auth, Users, Properties, 360 Tours, Spatial Q&A, AI Agent, Favorites, Viewing
-History, Bookings, Purchase/Viewing Requests, Price Trackers, Recommendations,
-Complaints, Admin, Seller Dashboard, Notifications, Realtime (`/ws`), Media.
+History, Bookings, Payments (MockPay), Purchase/Viewing Requests, Price Trackers,
+Recommendations, Complaints, Admin, Seller Dashboard, Notifications, Realtime
+(`/ws`), Media.
 
 Full interactive documentation is generated at **`/docs`**.
 

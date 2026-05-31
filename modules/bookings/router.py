@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from models import (
@@ -12,22 +12,16 @@ from models import (
     PaymentStatus,
     DealType,
     PropertyStatus,
-    NotificationType,
 )
 from dependencies import get_current_user
-from config import (
-    STRIPE_SECRET_KEY,
-    STRIPE_WEBHOOK_SECRET,
-    STRIPE_SUCCESS_URL,
-    STRIPE_CANCEL_URL,
-)
 from modules.bookings.schemas import (
     BookingCreate,
     BookingOut,
     BookingList,
     CheckoutResponse,
 )
-from modules.notifications.crud import create_notification
+from modules.bookings.crud import confirm_booking
+from modules.payments.service import create_session, checkout_url
 
 
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
@@ -60,9 +54,8 @@ def create_booking(
 ):
     """Book a rental and start payment.
 
-    Creates a pending booking, then returns a Stripe Checkout URL. If Stripe is
-    not configured, returns dev_mode=True with a local confirm link so the flow
-    is fully testable without keys.
+    Creates a pending booking and a MockPay checkout session, then returns a
+    hosted checkout URL. Open it to 'pay' and the booking is confirmed.
     """
     prop = db.query(Property).filter(Property.id == data.property_id).first()
     if not prop or prop.status == PropertyStatus.deleted:
@@ -90,101 +83,12 @@ def create_booking(
     db.commit()
     db.refresh(booking)
 
-    if not STRIPE_SECRET_KEY:
-        return CheckoutResponse(
-            booking_id=booking.id,
-            checkout_url=f"/bookings/{booking.id}/confirm-dev",
-            dev_mode=True,
-        )
-
-    import stripe
-    stripe.api_key = STRIPE_SECRET_KEY
-    try:
-        session = stripe.checkout.Session.create(
-            mode="payment",
-            success_url=STRIPE_SUCCESS_URL,
-            cancel_url=STRIPE_CANCEL_URL,
-            client_reference_id=str(booking.id),
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "usd",
-                        "product_data": {"name": f"Booking #{booking.id}: {prop.title}"},
-                        "unit_amount": int(total * 100),
-                    },
-                    "quantity": 1,
-                }
-            ],
-            metadata={"booking_id": str(booking.id)},
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Stripe error: {exc}")
-
-    booking.stripe_session_id = session.id
-    db.commit()
-    return CheckoutResponse(booking_id=booking.id, checkout_url=session.url, dev_mode=False)
-
-
-def _confirm_booking(db: Session, booking: Booking) -> None:
-    booking.status = BookingStatus.confirmed
-    booking.payment_status = PaymentStatus.paid
-    db.commit()
-    create_notification(
-        db,
-        user_id=booking.renter_id,
-        type=NotificationType.booking_confirmed,
-        content={
-            "title": "Booking confirmed",
-            "body": f"Your booking #{booking.id} is confirmed and paid.",
-            "booking_id": booking.id,
-            "property_id": booking.property_id,
-        },
+    session = create_session(db, booking)
+    return CheckoutResponse(
+        booking_id=booking.id,
+        checkout_url=checkout_url(session.token),
+        payment_token=session.token,
     )
-
-
-@router.post("/{booking_id}/confirm-dev", response_model=BookingOut)
-def confirm_dev(
-    booking_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Dev-only: simulate a successful payment when Stripe isn't configured."""
-    if STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=400, detail="Stripe is configured; use Checkout")
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not booking or booking.renter_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    _confirm_booking(db, booking)
-    db.refresh(booking)
-    return BookingOut.model_validate(booking)
-
-
-@router.post("/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    """Stripe payment webhook -> confirm the booking on checkout.session.completed."""
-    if not STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=400, detail="Stripe not configured")
-    import stripe
-
-    payload = await request.body()
-    sig = request.headers.get("stripe-signature")
-    try:
-        if STRIPE_WEBHOOK_SECRET:
-            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-        else:
-            import json
-            event = json.loads(payload)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid webhook: {exc}")
-
-    if event.get("type") == "checkout.session.completed":
-        session = event["data"]["object"]
-        booking_id = (session.get("metadata") or {}).get("booking_id") or session.get("client_reference_id")
-        if booking_id:
-            booking = db.query(Booking).filter(Booking.id == int(booking_id)).first()
-            if booking and booking.payment_status != PaymentStatus.paid:
-                _confirm_booking(db, booking)
-    return {"received": True}
 
 
 @router.get("", response_model=BookingList)
@@ -202,6 +106,33 @@ def my_bookings(
     total = q.count()
     items = q.offset(offset).limit(limit).all()
     return BookingList(items=[BookingOut.model_validate(b) for b in items], total=total)
+
+
+@router.get("/{booking_id}", response_model=BookingOut)
+def get_booking(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking or booking.renter_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return BookingOut.model_validate(booking)
+
+
+@router.post("/{booking_id}/pay-test", response_model=BookingOut)
+def pay_test(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Programmatic 'successful payment' for tests/demos without opening the page."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking or booking.renter_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    confirm_booking(db, booking)
+    db.refresh(booking)
+    return BookingOut.model_validate(booking)
 
 
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
