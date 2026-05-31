@@ -63,11 +63,11 @@ def _post(payload: dict[str, Any], timeout: float = 60.0) -> dict[str, Any]:
         raise AIError(f"AI request failed: {exc}") from exc
 
 
-def chat(messages: list[dict[str, Any]], temperature: float = 0.4) -> str:
-    """Plain text completion."""
+def chat(messages: list[dict[str, Any]], temperature: float = 0.4, model: str | None = None) -> str:
+    """Plain text completion. Pass `model` to override the default (same OpenRouter key)."""
     data = _post(
         {
-            "model": AI_MODEL,
+            "model": model or AI_MODEL,
             "messages": messages,
             "max_tokens": AI_MAX_TOKENS,
             "temperature": temperature,

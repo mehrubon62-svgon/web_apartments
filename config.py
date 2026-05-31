@@ -36,6 +36,9 @@ AI_API_KEY = os.getenv("AI_API_KEY", "")
 # A tool-capable + vision free model. Override in .env if it changes.
 AI_MODEL = os.getenv("AI_MODEL", "google/gemma-4-31b-it:free")
 AI_VISION_MODEL = os.getenv("AI_VISION_MODEL", AI_MODEL)
+# A reasoning model (via the same OpenRouter key) used to re-rank + explain
+# recommendations. DeepSeek R1 is strong at structured reasoning and is free.
+AI_RECOMMEND_MODEL = os.getenv("AI_RECOMMEND_MODEL", "deepseek/deepseek-r1:free")
 AI_MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", "1024"))
 # Optional attribution headers recommended by OpenRouter
 AI_APP_URL = os.getenv("AI_APP_URL", "http://localhost:3000")
