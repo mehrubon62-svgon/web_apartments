@@ -132,6 +132,8 @@ class User(Base):
 
     google_sub = Column(String(255), unique=True, nullable=True, index=True)
 
+    is_email_verified = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -158,6 +160,29 @@ class RefreshToken(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     user = relationship("User", back_populates="refresh_tokens")
+
+
+class EmailCodePurpose(str, enum.Enum):
+    verify = "verify"          # confirm email on registration
+    login = "login"            # passwordless / 2-step login
+    reset = "reset"            # password reset
+
+
+class EmailCode(Base):
+    """A one-time numeric code sent to an email for verification/login/reset."""
+    __tablename__ = "email_codes"
+    __table_args__ = (
+        Index("ix_email_codes_email_purpose", "email", "purpose"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    code_hash = Column(String(255), nullable=False)  # we store a hash, not the raw code
+    purpose = Column(SQLEnum(EmailCodePurpose), nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 # ===== Properties =====
@@ -460,3 +485,49 @@ class InfrastructurePOI(Base):
     name = Column(String(200), nullable=False)
     lat = Column(Float, nullable=False, index=True)
     lng = Column(Float, nullable=False, index=True)
+
+
+# ===== Direct messaging (buyer <-> realtor) =====
+
+class Conversation(Base):
+    """A 1-on-1 thread between a buyer and a seller, optionally about a property."""
+    __tablename__ = "conversations"
+    __table_args__ = (
+        UniqueConstraint("buyer_id", "seller_id", "property_id", name="uq_conversation_pair"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    seller_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_message_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+    messages = relationship(
+        "DirectMessage", back_populates="conversation",
+        cascade="all, delete-orphan", order_by="DirectMessage.created_at",
+    )
+
+
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # text is optional when an attachment is present
+    text = Column(Text, nullable=True)
+
+    # Attachment (file/image) — optional
+    attachment_url = Column(String(500), nullable=True)
+    attachment_name = Column(String(255), nullable=True)
+    attachment_type = Column(String(100), nullable=True)  # MIME type
+    attachment_size = Column(Integer, nullable=True)       # bytes
+
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    is_edited = Column(Boolean, default=False, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    edited_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+    conversation = relationship("Conversation", back_populates="messages")

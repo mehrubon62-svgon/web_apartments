@@ -9,6 +9,7 @@ from models import get_db, User, AIConversation
 from dependencies import get_current_user
 from modules.ai.service import chat_with_tools, chat, is_configured, AIError
 from modules.agent.tools import TOOLS, execute_tool
+from modules.ratelimit.limiter import rate_limit
 
 
 router = APIRouter(prefix="/agent", tags=["AI Agent"])
@@ -65,7 +66,7 @@ def _get_or_create_conversation(db: Session, user_id: int, conversation_id: int 
 def agent_chat(
     data: ChatRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(rate_limit("agent")),
 ):
     """Talk to the AI agent. Runs a function-calling loop against real tools."""
     if not is_configured():

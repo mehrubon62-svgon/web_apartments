@@ -58,6 +58,25 @@ PAYMENT_CURRENCY = os.getenv("PAYMENT_CURRENCY", "usd")
 # Minutes a checkout session stays valid before it expires.
 PAYMENT_SESSION_TTL_MIN = int(os.getenv("PAYMENT_SESSION_TTL_MIN", "30"))
 
+# ===== Email (SMTP — Gmail App Password) =====
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")            # your gmail address
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")    # Google App Password (16 chars)
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER or "no-reply@estate.local")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "AI Real Estate")
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+
+# Email verification codes
+EMAIL_CODE_TTL_MIN = int(os.getenv("EMAIL_CODE_TTL_MIN", "10"))
+EMAIL_CODE_MAX_ATTEMPTS = int(os.getenv("EMAIL_CODE_MAX_ATTEMPTS", "5"))
+# When True, registration requires email verification before login works.
+REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
+
 # ===== Moderation =====
 # Number of complaints against a seller that triggers automatic AI moderation.
 COMPLAINT_THRESHOLD = int(os.getenv("COMPLAINT_THRESHOLD", "3"))
+
+# ===== Rate limiting (per user) for AI endpoints =====
+AI_RATE_LIMIT = int(os.getenv("AI_RATE_LIMIT", "20"))          # requests
+AI_RATE_WINDOW_SEC = int(os.getenv("AI_RATE_WINDOW_SEC", "60"))  # per window

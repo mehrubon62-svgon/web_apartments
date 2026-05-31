@@ -66,6 +66,18 @@ celery -A celery_app.celery worker --loglevel=info
 celery -A celery_app.celery beat --loglevel=info   # periodic price checks
 ```
 
+## Database migrations (Alembic)
+
+The schema is managed with Alembic (`alembic/`). Apply migrations:
+
+```bash
+alembic upgrade head          # create/upgrade all tables
+alembic revision --autogenerate -m "your change"   # after editing models.py
+```
+
+`seed_data.py` also calls `create_all` for zero-config local runs, but Alembic is
+the source of truth for the schema.
+
 ## Demo accounts (after seeding)
 
 Password for all: `demo1234`
@@ -92,10 +104,11 @@ All keys are environment variables (see `.env.example`). Notable ones:
 
 ## Modules / API groups
 
-Auth, Users, Properties, 360 Tours, Spatial Q&A, AI Agent, Favorites, Viewing
-History, Bookings, Payments (MockPay), Purchase/Viewing Requests, Price Trackers,
-Recommendations, Complaints, Admin, Seller Dashboard, Notifications, Realtime
-(`/ws`), Media.
+Auth, Users, Properties, Map + Infrastructure markers, 360 Tours, Spatial Q&A,
+AI Agent, Favorites, Viewing History, Bookings, Payments (MockPay),
+Purchase/Viewing Requests, Messages (Contact Realtor), Price Trackers,
+Recommendations (+ AI rerank), Complaints, Admin, Seller Dashboard,
+Notifications, Realtime (`/ws`), Media.
 
 Full interactive documentation is generated at **`/docs`**.
 

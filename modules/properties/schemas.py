@@ -97,6 +97,17 @@ class MapMarker(BaseModel):
     title: str
 
 
+class InfrastructureMarker(BaseModel):
+    id: int
+    kind: str  # metro | school | shop
+    name: str
+    lat: float
+    lng: float
+
+    class Config:
+        from_attributes = True
+
+
 class PriceHistoryPoint(BaseModel):
     price: float
     recorded_at: datetime

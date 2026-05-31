@@ -32,6 +32,7 @@ from modules.ai.service import ask_with_image, chat, is_configured, AIError
 from modules.notifications.crud import create_notification
 from modules.recommendations.crud import compute_recommendations, cache_recommendations
 from modules.realtime.manager import publish_event_sync
+from modules.email.service import send_email, code_email
 
 
 def _read_image_b64(image_url: str | None) -> str | None:
@@ -253,3 +254,19 @@ def send_notification(user_id: int, type: str, content: dict) -> dict:
         return {"ok": True}
     finally:
         db.close()
+
+
+@celery.task(name="tasks.send_email_code", bind=True, max_retries=3, default_retry_delay=10)
+def send_email_code(self, email: str, code: str, purpose: str) -> dict:
+    """Email a verification code (the 'рассылка' runs through Celery)."""
+    from config import EMAIL_CODE_TTL_MIN
+
+    subject, text, html = code_email(code, purpose, EMAIL_CODE_TTL_MIN)
+    ok = send_email(email, subject, text, html)
+    if not ok:
+        # Could be a transient SMTP issue; retry a couple of times.
+        try:
+            raise self.retry(exc=RuntimeError("email send failed"))
+        except self.MaxRetriesExceededError:
+            return {"ok": False, "email": email}
+    return {"ok": True, "email": email}

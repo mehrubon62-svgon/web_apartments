@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from models import get_db, User, Property, SpatialQA, PropertyStatus
 from dependencies import get_current_user
 from config import MEDIA_DIR
+from modules.ratelimit.limiter import rate_limit
 from modules.spatial_qa.schemas import (
     SpatialQuestionIn,
     SpatialQAOut,
@@ -35,7 +36,7 @@ def _save_zone_image(image_b64: str) -> str | None:
 def ask(
     data: SpatialQuestionIn,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(rate_limit("spatial_qa")),
 ):
     """Ask a question about a selected zone in a 360° tour.
 

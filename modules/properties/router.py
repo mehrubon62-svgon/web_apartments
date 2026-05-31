@@ -9,6 +9,7 @@ from models import (
     PriceHistory,
     Review,
     Availability,
+    InfrastructurePOI,
     DealType,
     PropertyType,
 )
@@ -21,6 +22,7 @@ from modules.properties.schemas import (
     PropertyList,
     MediaOut,
     MapMarker,
+    InfrastructureMarker,
     PriceHistoryPoint,
     ReviewIn,
     ReviewOut,
@@ -128,6 +130,20 @@ def map_view(
         )
         for p in props
     ]
+
+
+@router.get("/map/infrastructure", response_model=list[InfrastructureMarker])
+def map_infrastructure(
+    kind: str | None = Query(None, description="Filter: metro | school | shop"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Infrastructure markers (metro, schools, shops) for the map overlay."""
+    q = db.query(InfrastructurePOI)
+    if kind:
+        q = q.filter(InfrastructurePOI.kind == kind)
+    pois = q.all()
+    return [InfrastructureMarker.model_validate(p) for p in pois]
 
 
 @router.get("/nearby", response_model=PropertyList)

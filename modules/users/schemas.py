@@ -35,6 +35,18 @@ class GoogleAuthRequest(BaseModel):
     role: RoleEnum = RoleEnum.buyer
 
 
+class SendCodeRequest(BaseModel):
+    email: EmailStr
+    # verify (default) | login | reset
+    purpose: str = "verify"
+
+
+class VerifyCodeRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=8)
+    purpose: str = "verify"
+
+
 class UserPublic(BaseModel):
     id: int
     full_name: str | None = None

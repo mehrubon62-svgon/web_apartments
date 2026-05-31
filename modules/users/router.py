@@ -4,8 +4,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from models import get_db, User
-from config import GOOGLE_CLIENT_ID
+from models import get_db, User, EmailCodePurpose
+from config import GOOGLE_CLIENT_ID, REQUIRE_EMAIL_VERIFICATION, EMAIL_CODE_TTL_MIN
 from dependencies import get_current_user, create_access_token
 from modules.users.schemas import (
     UserRegister,
@@ -15,6 +15,8 @@ from modules.users.schemas import (
     Token,
     RefreshRequest,
     GoogleAuthRequest,
+    SendCodeRequest,
+    VerifyCodeRequest,
 )
 from modules.users.crud import (
     get_user_by_email,
@@ -28,10 +30,38 @@ from modules.users.crud import (
     revoke_refresh_token,
     revoke_all_user_tokens,
 )
+from modules.email.crud import create_code, verify_code
+from modules.email.service import is_configured as email_configured
 
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 users_router = APIRouter(prefix="/users", tags=["Users"])
+
+
+def _parse_purpose(value: str) -> EmailCodePurpose:
+    try:
+        return EmailCodePurpose(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid purpose. Use verify | login | reset")
+
+
+def _dispatch_code(db: Session, email: str, purpose: EmailCodePurpose) -> dict:
+    """Create a code and send it via Celery email task (sync fallback). In dev,
+    when SMTP isn't configured, the code is returned so the flow stays testable."""
+    code = create_code(db, email, purpose)
+    try:
+        from tasks import send_email_code
+        send_email_code.delay(email, code, purpose.value)
+    except Exception:
+        # Broker down -> send inline so it still works.
+        from tasks import send_email_code
+        send_email_code(email, code, purpose.value)
+
+    resp = {"detail": "Verification code sent", "expires_in_min": EMAIL_CODE_TTL_MIN}
+    if not email_configured():
+        # Dev convenience only: surface the code when no SMTP is set up.
+        resp["dev_code"] = code
+    return resp
 
 
 def _issue_tokens(db: Session, user: User) -> dict:
@@ -46,7 +76,12 @@ def _issue_tokens(db: Session, user: User) -> dict:
 
 @router.post("/register", response_model=Token, status_code=201)
 def register(data: UserRegister, db: Session = Depends(get_db)):
-    """Register via email/password. Sellers publish immediately, no verification."""
+    """Register via email/password.
+
+    A 6-digit confirmation code is emailed (via Celery). If
+    REQUIRE_EMAIL_VERIFICATION is on, the user must call /auth/verify-email
+    before logging in. Tokens are still returned so the frontend can proceed.
+    """
     if get_user_by_email(db, data.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     user = create_user(
@@ -57,6 +92,50 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
         role=data.role,
         company_name=data.company_name,
     )
+    # Fire off the email verification code.
+    _dispatch_code(db, user.email, EmailCodePurpose.verify)
+    return _issue_tokens(db, user)
+
+
+@router.post("/send-code")
+def send_code(data: SendCodeRequest, db: Session = Depends(get_db)):
+    """Send a verification code to an email (purpose: verify | login | reset)."""
+    purpose = _parse_purpose(data.purpose)
+    # For login/reset the user must exist; for verify we allow any (registration).
+    if purpose in (EmailCodePurpose.login, EmailCodePurpose.reset):
+        if not get_user_by_email(db, data.email):
+            raise HTTPException(status_code=404, detail="No account with this email")
+    return _dispatch_code(db, data.email, purpose)
+
+
+@router.post("/verify-email")
+def verify_email(data: VerifyCodeRequest, db: Session = Depends(get_db)):
+    """Confirm an email with the code that was sent to it."""
+    purpose = _parse_purpose(data.purpose)
+    ok, reason = verify_code(db, data.email, purpose, data.code)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    user = get_user_by_email(db, data.email)
+    if user:
+        user.is_email_verified = True
+        db.commit()
+    return {"detail": "Email verified"}
+
+
+@router.post("/login-code", response_model=Token)
+def login_with_code(data: VerifyCodeRequest, db: Session = Depends(get_db)):
+    """Passwordless login: verify the emailed code and return tokens."""
+    ok, reason = verify_code(db, data.email, EmailCodePurpose.login, data.code)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    user = get_user_by_email(db, data.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is banned")
+    user.is_email_verified = True
+    db.commit()
     return _issue_tokens(db, user)
 
 
@@ -67,6 +146,11 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is banned")
+    if REQUIRE_EMAIL_VERIFICATION and not user.is_email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Check your inbox or request a new code via /auth/send-code.",
+        )
     return _issue_tokens(db, user)
 
 

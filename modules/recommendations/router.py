@@ -11,6 +11,7 @@ from modules.recommendations.crud import (
     compute_recommendations,
     ai_rerank,
 )
+from modules.ratelimit.limiter import rate_limit
 
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
@@ -49,7 +50,7 @@ def ai_recommendations(
     limit: int = Query(10, le=30),
     query: str | None = Query(None, description="Optional natural-language hint, e.g. 'best for a family with kids'"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(rate_limit("recommend_ai")),
 ):
     """Hybrid recommendations.
 

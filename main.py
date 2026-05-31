@@ -21,6 +21,7 @@ from modules.agent.router import router as agent_router
 from modules.bookings.router import router as bookings_router
 from modules.payments.router import router as payments_router
 from modules.requests.router import router as requests_router
+from modules.messages.router import router as messages_router
 from modules.trackers.router import router as trackers_router
 from modules.recommendations.router import router as recommendations_router
 from modules.complaints.router import router as complaints_router
@@ -83,6 +84,7 @@ app.include_router(agent_router)
 app.include_router(bookings_router)
 app.include_router(payments_router)
 app.include_router(requests_router)
+app.include_router(messages_router)
 app.include_router(trackers_router)
 
 # Intelligence & moderation
