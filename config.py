@@ -42,7 +42,7 @@ AI_RECOMMEND_MODEL = os.getenv("AI_RECOMMEND_MODEL", "deepseek/deepseek-r1:free"
 AI_MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", "1024"))
 # Optional attribution headers recommended by OpenRouter
 AI_APP_URL = os.getenv("AI_APP_URL", "http://localhost:3000")
-AI_APP_TITLE = os.getenv("AI_APP_TITLE", "AI Real Estate Marketplace")
+AI_APP_TITLE = os.getenv("AI_APP_TITLE", "Nestora")
 
 # ===== Mapbox (geocoding + map) =====
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
@@ -64,7 +64,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")            # your gmail address
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")    # Google App Password (16 chars)
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER or "no-reply@estate.local")
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "AI Real Estate")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Nestora")
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
 # Email verification codes

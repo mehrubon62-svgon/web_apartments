@@ -1,8 +1,8 @@
-# AI Real Estate Marketplace — Backend
+# Nestora — AI Real Estate Marketplace (Backend)
 
-An AI-powered real estate marketplace API built with **FastAPI**. Map + catalog,
-360° tours with **Spatial Q&A**, a tool-using **AI agent**, online bookings with
-a built-in **MockPay** payment gateway, price tracking, personalized
+Nestora is an AI-powered real estate marketplace API built with **FastAPI**.
+Map + catalog, 360° tours with **Spatial Q&A**, a tool-using **AI agent**, online
+bookings with a built-in **MockPay** payment gateway, price tracking, personalized
 recommendations, and **automatic complaint moderation**. All heavy work runs on
 **Celery + Redis**, with realtime notifications delivered over WebSockets.
 
@@ -14,7 +14,7 @@ recommendations, and **automatic complaint moderation**. All heavy work runs on
 | ORM / DB | SQLAlchemy + PostgreSQL (SQLite for zero-setup local dev) |
 | Background tasks | Celery + Redis (broker, result backend, pub/sub) |
 | Realtime | WebSocket `/ws` bridged to Celery via Redis pub/sub |
-| Auth | JWT (access + refresh), role-based, Google OAuth |
+| Auth | JWT (access + refresh), role-based, Google OAuth, email codes |
 | AI | OpenRouter (OpenAI-compatible) — tool calling + vision |
 | Payments | Built-in MockPay gateway (Stripe-like hosted checkout, no keys) |
 | Geocoding / map | Mapbox |
@@ -99,6 +99,10 @@ All keys are environment variables (see `.env.example`). Notable ones:
 - `STRIPE_SECRET_KEY` — *(removed)* payments use the built-in MockPay gateway;
   open the returned `checkout_url`, pay with test card `4242 4242 4242 4242`.
 - `MAPBOX_TOKEN` — enables address geocoding (manual pin always wins).
+- `SMTP_USER` / `SMTP_PASSWORD` — Gmail address + **App Password** for emailing
+  verification codes. Without them, `/auth/send-code` returns the code in
+  `dev_code` so the flow stays testable. Set `REQUIRE_EMAIL_VERIFICATION=true`
+  to force email confirmation before password login.
 - `COMPLAINT_THRESHOLD` — complaints against a seller that trigger AI moderation
   (default 3).
 
@@ -121,6 +125,7 @@ Full interactive documentation is generated at **`/docs`**.
 | `track_price_changes` | on a price drop + every 30 min (beat) |
 | `moderate_seller` | seller reaches the complaint threshold |
 | `send_notification` | universal dispatcher |
+| `send_email_code` | email a verification/login code (Gmail SMTP) |
 
 ## Project layout
 

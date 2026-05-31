@@ -48,13 +48,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Real Estate Marketplace API",
+    title="Nestora API",
     version="1.0.0",
     description=(
-        "AI-powered real estate marketplace: map + catalog, 360° tours with Spatial Q&A, "
-        "a tool-using AI agent (OpenRouter), bookings with a built-in MockPay gateway, "
-        "price tracking, and automatic complaint moderation. All heavy work runs on "
-        "Celery + Redis."
+        "Nestora — an AI-powered real estate marketplace: map + catalog, 360° tours "
+        "with Spatial Q&A, a tool-using AI agent (OpenRouter), bookings with a built-in "
+        "MockPay gateway, price tracking, and automatic complaint moderation. All heavy "
+        "work runs on Celery + Redis."
     ),
     swagger_ui_parameters={"persistAuthorization": True, "tryItOutEnabled": True},
     lifespan=lifespan,
@@ -104,7 +104,7 @@ app.mount("/media-files", StaticFiles(directory=MEDIA_DIR), name="media-files")
 
 @app.get("/", tags=["Meta"])
 def root():
-    return {"name": "AI Real Estate Marketplace API", "version": "1.0.0", "docs": "/docs"}
+    return {"name": "Nestora API", "version": "1.0.0", "docs": "/docs"}
 
 
 @app.get("/health", tags=["Meta"])

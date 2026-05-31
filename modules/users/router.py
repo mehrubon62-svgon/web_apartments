@@ -53,9 +53,10 @@ def _dispatch_code(db: Session, email: str, purpose: EmailCodePurpose) -> dict:
         from tasks import send_email_code
         send_email_code.delay(email, code, purpose.value)
     except Exception:
-        # Broker down -> send inline so it still works.
-        from tasks import send_email_code
-        send_email_code(email, code, purpose.value)
+        # Broker down -> send the email directly (no Celery retry machinery).
+        from modules.email.service import send_email, code_email
+        subject, text, html = code_email(code, purpose.value, EMAIL_CODE_TTL_MIN)
+        send_email(email, subject, text, html)
 
     resp = {"detail": "Verification code sent", "expires_in_min": EMAIL_CODE_TTL_MIN}
     if not email_configured():
