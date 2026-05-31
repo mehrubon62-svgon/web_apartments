@@ -13,3 +13,4 @@ redis
 numpy
 faker
 psycopg2-binary
+pytest

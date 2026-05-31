@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import MEDIA_DIR
 from models import Base, engine
+from modules.observability.middleware import RequestLogMiddleware, configure_logging
 
 # Routers
 from modules.users.router import router as auth_router, users_router
@@ -39,6 +40,7 @@ Path(MEDIA_DIR).mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     # Start the Redis->WebSocket relay so Celery-produced events reach clients.
     task = asyncio.create_task(pubsub_listener())
     try:
@@ -67,6 +69,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLogMiddleware)
 
 # Auth & users
 app.include_router(auth_router)
@@ -109,4 +112,26 @@ def root():
 
 @app.get("/health", tags=["Meta"])
 def health():
-    return {"status": "ok"}
+    """Liveness + dependency checks (database and Redis)."""
+    from sqlalchemy import text
+    from config import REDIS_URL
+
+    db_ok = False
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    redis_ok = False
+    try:
+        import redis as sync_redis
+        client = sync_redis.from_url(REDIS_URL, socket_connect_timeout=2)
+        redis_ok = bool(client.ping())
+        client.close()
+    except Exception:
+        redis_ok = False
+
+    status = "ok" if db_ok else "degraded"
+    return {"status": status, "database": db_ok, "redis": redis_ok}
