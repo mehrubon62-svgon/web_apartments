@@ -143,6 +143,108 @@ def text_search(db: Session, query: str, limit: int = 20, offset: int = 0):
     return items, total
 
 
+def market_stats(db: Session, prop: Property) -> dict:
+    """Market context for one property: comparable active listings of the same
+    deal type + property type, and their average price / price-per-m².
+
+    Used by the AI review to judge whether a listing is a good deal or a scam.
+    """
+    comps = (
+        db.query(Property)
+        .filter(
+            Property.status == PropertyStatus.active,
+            Property.id != prop.id,
+            Property.deal_type == prop.deal_type,
+            Property.type == prop.type,
+        )
+        .all()
+    )
+    prices = [c.price for c in comps if c.price]
+    ppsqm = [c.price / c.area for c in comps if c.area]
+
+    def _median(xs):
+        if not xs:
+            return None
+        s = sorted(xs)
+        n = len(s)
+        mid = n // 2
+        return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
+
+    avg_price = sum(prices) / len(prices) if prices else None
+    median_price = _median(prices)
+    avg_ppsqm = sum(ppsqm) / len(ppsqm) if ppsqm else None
+
+    this_ppsqm = (prop.price / prop.area) if prop.area else None
+    # How this listing compares to the market median (1.0 == at market).
+    price_ratio = (prop.price / median_price) if median_price else None
+    ppsqm_ratio = (this_ppsqm / avg_ppsqm) if (this_ppsqm and avg_ppsqm) else None
+
+    return {
+        "comparables_count": len(comps),
+        "market_avg_price": round(avg_price, 2) if avg_price else None,
+        "market_median_price": round(median_price, 2) if median_price else None,
+        "market_avg_price_per_sqm": round(avg_ppsqm, 2) if avg_ppsqm else None,
+        "this_price": prop.price,
+        "this_price_per_sqm": round(this_ppsqm, 2) if this_ppsqm else None,
+        "price_ratio_vs_median": round(price_ratio, 2) if price_ratio else None,
+        "ppsqm_ratio_vs_avg": round(ppsqm_ratio, 2) if ppsqm_ratio else None,
+    }
+
+
+def heuristic_review(prop: Property, stats: dict) -> dict:
+    """Rule-based fallback verdict when AI is unavailable (or to seed the AI).
+
+    Flags listings priced far below the market as suspicious / likely scams, and
+    rates value based on how the price compares to comparable listings.
+    """
+    ratio = stats.get("price_ratio_vs_median") or stats.get("ppsqm_ratio_vs_avg")
+    red_flags: list[str] = []
+    pros: list[str] = []
+    cons: list[str] = []
+
+    # Sanity flags independent of market data.
+    if prop.area and prop.rooms and prop.area / max(prop.rooms, 1) < 6:
+        red_flags.append("Unrealistically small area per room")
+    if not prop.description:
+        cons.append("No description provided")
+    if not (prop.lat and prop.lng):
+        cons.append("No exact location pinned")
+
+    if ratio is None:
+        verdict, score, risk = "insufficient_data", 50, "unknown"
+        summary = "Not enough comparable listings to judge the price."
+    elif ratio < 0.35:
+        verdict, score, risk = "likely_scam", 10, "high"
+        summary = "Price is far below the market for similar properties — classic scam signal."
+        red_flags.append(f"Priced at ~{int(ratio*100)}% of the market median")
+    elif ratio < 0.7:
+        verdict, score, risk = "suspicious", 35, "medium"
+        summary = "Noticeably cheaper than comparable listings — verify before paying."
+        red_flags.append("Below-market price")
+    elif ratio <= 1.1:
+        verdict, score, risk = "great_deal" if ratio < 0.95 else "fair", 80, "low"
+        summary = "Priced in line with (or slightly below) the market."
+        pros.append("Price close to market value")
+    elif ratio <= 1.4:
+        verdict, score, risk = "overpriced", 45, "low"
+        summary = "Above the market for comparable properties."
+        cons.append("Higher than typical price")
+    else:
+        verdict, score, risk = "overpriced", 25, "low"
+        summary = "Significantly above the market."
+        cons.append("Much higher than typical price")
+
+    return {
+        "verdict": verdict,
+        "deal_score": score,
+        "scam_risk": risk,
+        "summary": summary,
+        "pros": pros,
+        "cons": cons,
+        "red_flags": red_flags,
+    }
+
+
 def has_tour(db: Session, property_id: int) -> bool:
     return db.query(Tour).filter(Tour.property_id == property_id).first() is not None
 

@@ -15,6 +15,7 @@ from models import (
 )
 from dependencies import get_current_user, require_seller
 from modules.geo.service import geocode, haversine_km
+from modules.ratelimit.limiter import rate_limit
 from modules.properties.schemas import (
     PropertyCreate,
     PropertyUpdate,
@@ -32,6 +33,7 @@ from modules.properties.schemas import (
     MortgageResponse,
     ComparisonRow,
     ComparisonResult,
+    AIReviewResult,
 )
 from modules.properties.crud import (
     create_property,
@@ -335,6 +337,27 @@ def remove(
 
 
 # ===== Price history (sale) =====
+
+@router.get("/{property_id}/ai-review", response_model=AIReviewResult)
+def ai_review(
+    property_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(rate_limit("ai_review")),
+):
+    """AI verdict on a listing: is it a good deal, overpriced, or a likely scam?
+
+    Compares the price against similar active listings (same type + deal type),
+    then asks the AI for a verdict with a deal score (0-100), scam risk and a
+    short explanation. Falls back to a rule-based heuristic if AI is unavailable.
+    """
+    from modules.properties.review import review_property
+
+    prop = get_property(db, property_id)
+    if not prop or prop.status == PropertyStatus.deleted:
+        raise HTTPException(status_code=404, detail="Property not found")
+    result = review_property(db, prop)
+    return AIReviewResult(**result)
+
 
 @router.get("/{property_id}/similar", response_model=PropertyList)
 def similar(

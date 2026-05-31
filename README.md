@@ -1,144 +1,345 @@
-# Nestora — AI Real Estate Marketplace (Backend)
+# Nestora — AI-маркетплейс недвижимости (Backend)
 
-Nestora is an AI-powered real estate marketplace API built with **FastAPI**.
-Map + catalog, 360° tours with **Spatial Q&A**, a tool-using **AI agent**, online
-bookings with a built-in **MockPay** payment gateway, price tracking, personalized
-recommendations, and **automatic complaint moderation**. All heavy work runs on
-**Celery + Redis**, with realtime notifications delivered over WebSockets.
+Nestora — это бэкенд платформы для аренды и покупки недвижимости с упором на
+**иммерсивный просмотр** и **искусственный интеллект**. Вместо плоского каталога
+с фотографиями пользователь ходит по квартире в 360°-туре (как в Google Street
+View — переходы между комнатами по стрелкам), задаёт вопросы прямо про
+конкретную зону на панораме, общается с ИИ-агентом, который сам ищет объекты и
+управляет избранным, и бронирует жильё с оплатой онлайн.
 
-## Tech stack
+Построен на **FastAPI**, тяжёлые операции вынесены в **Celery + Redis**,
+уведомления приходят в реальном времени по WebSocket. Вся документация API
+автогенерируется в Swagger — **`/docs`**.
 
-| Concern | Choice |
+---
+
+## Зачем нужен проект
+
+Обычные сайты недвижимости решают задачу «показать список». Nestora решает задачу
+**«помочь принять решение»**:
+
+- **Меньше бесполезных просмотров вживую.** 360°-тур + Spatial Q&A дают понять
+  про объект почти всё ещё до визита: материалы стен, размеры, состояние.
+- **Поиск на естественном языке.** Не нужно крутить десяток фильтров — можно
+  написать ИИ-агенту «найди двушку до $500k рядом с метро», и он сам подберёт.
+- **Прозрачность и доверие.** История цен, отзывы, честная авто-модерация жалоб
+  на продавцов через ИИ — недобросовестные продавцы получают предупреждение или
+  блокировку.
+- **Открытый рынок.** Продавец (частник, риелтор, агентство, застройщик)
+  регистрируется и сразу публикует объявления без модерации на входе.
+
+---
+
+## Роли пользователей
+
+| Роль | Что может делать |
 |---|---|
-| API | FastAPI (auto Swagger at `/docs`) |
-| ORM / DB | SQLAlchemy + PostgreSQL (SQLite for zero-setup local dev) |
-| Background tasks | Celery + Redis (broker, result backend, pub/sub) |
-| Realtime | WebSocket `/ws` bridged to Celery via Redis pub/sub |
-| Auth | JWT (access + refresh), role-based, Google OAuth, email codes |
-| AI | OpenRouter (OpenAI-compatible) — tool calling + vision |
-| Payments | Built-in MockPay gateway (Stripe-like hosted checkout, no keys) |
-| Geocoding / map | Mapbox |
-| Storage | Local disk (`/media-files`), Supabase-Storage-ready contract |
+| **Покупатель / арендатор** | Карта и каталог, фильтры, 360°-туры, Spatial Q&A, бронь с оплатой, заявки на покупку, чат с риелтором, ИИ-агент, избранное, история, жалобы, трекеры цен |
+| **Продавец / арендодатель** | Регистрация и моментальная публикация (без верификации), загрузка фото и 360°, пин на карте, управление объявлениями, аналитика, чат с покупателями |
+| **Администратор** | Просмотр всех жалоб и решений ИИ-модерации, ручное переопределение решений, разбан |
 
-> **Design notes.** The brief specified Supabase/Claude/Stripe. To keep the
-> project fully runnable for free and offline, this implementation uses a
-> provider-agnostic AI layer (defaults to OpenRouter's free tier, switchable to
-> Claude/Gemini via env vars), local file storage behind a swappable upload
-> contract, WebSocket+Redis realtime instead of Supabase Realtime, and a
-> self-contained **MockPay** gateway that mimics a hosted Stripe Checkout
-> (payment session → hosted card page → confirmation). Behaviour is the same;
-> only the provider changes.
+---
 
-## Roles
+## Функции
 
-- **buyer** — browse map/catalog, view 360° tours, Spatial Q&A, book rentals,
-  submit purchase requests, chat with the AI agent, favorites/history, complaints.
-- **seller** — register and publish immediately (no verification), upload photos
-  and 360° images, pin location, manage listings, view analytics.
-- **admin** — review complaints and AI moderation decisions, override them.
+### 🔐 Аутентификация
+- Регистрация и вход по email + пароль (JWT: access + refresh).
+- Вход через **Google** (профиль — имя и аватар — подтягивается автоматически).
+- **Подтверждение почты кодом** и **беспарольный вход по коду** (письма через Gmail SMTP, рассылка в Celery).
+- **Сброс пароля по коду**, смена пароля, ролевой доступ к эндпоинтам.
 
-## Run with Docker (recommended)
+### 🗺️ Карта и каталог
+- Интерактивная карта (Mapbox) с маркерами объектов.
+- Маркеры инфраструктуры: метро, школы, магазины.
+- Фильтры: цена, площадь, тип (квартира/дом/коммерция), тип сделки (аренда/продажа).
+- Радиус-поиск от точки геолокации, полнотекстовый поиск, похожие объекты.
+
+### 🏠 Объявления
+- Два типа сделки:
+  - **Аренда** — короткая/долгая, календарь доступности, онлайн-бронь + оплата, отзывы, правила дома.
+  - **Продажа** — заявка на просмотр, ипотечный калькулятор, история цен.
+- Координаты задаются вручную пином **или** автогеокодингом адреса (Mapbox).
+
+### 🌐 360°-туры
+- Полноэкранный просмотрщик панорам (Pannellum).
+- **Навигация стрелками между комнатами** — как в Google Street View (scene-хотспоты с разворотом камеры на входе, плавный кроссфейд).
+- Бэкенд отдаёт готовый Pannellum-конфиг; шаринг ссылки на конкретную комнату.
+
+### 🔍 Spatial Q&A (уникальная фича)
+- Пользователь выделяет прямоугольную зону на панораме и задаёт вопрос про неё.
+- Скриншот зоны + метаданные объекта уходят в ИИ (vision), ответ — про материалы, размеры, стоимость замены.
+- Обработка асинхронная через Celery, история вопросов сохраняется в профиле.
+
+### 🤖 ИИ-агент (function calling)
+Чат-агент, который через вызов инструментов реально работает с базой:
+- ищет объекты по описанию, открывает тур, переключает карту с фильтрами;
+- сравнивает объекты, анализирует избранное, читает/чистит историю просмотров;
+- добавляет в избранное, ставит трекер цены, советует по району/ипотеке/рынку.
+
+### 💡 Рекомендации
+- Контентный алгоритм по истории просмотров и избранному + **ИИ-реранкинг** (DeepSeek через OpenRouter) с объяснением «почему именно эти».
+- Пересчёт в фоне (Celery), кеш в Redis.
+
+### 💳 Бронирование и оплата
+- Бронь аренды с проверкой пересечения дат.
+- Встроенный платёжный шлюз **MockPay** — имитирует Stripe Checkout (платёжная сессия → хостинг-страница с картой → подтверждение). Тестовые карты, без внешних ключей.
+
+### 💬 Чат покупатель ↔ риелтор
+- Кнопка «Связаться с риелтором» открывает диалог.
+- Редактирование и удаление сообщений, **ответ на сообщение** (reply), отправка файлов (фото/документы), отметки «прочитано», live-доставка.
+
+### 🛡️ Жалобы и авто-модерация
+- Любой покупатель подаёт жалобу на продавца.
+- При достижении порога (по умолчанию 3) Celery отправляет все жалобы в ИИ → решение: **без действий / предупреждение / бан**.
+- Продавец получает уведомление; админ может переопределить решение.
+
+### 🔔 Уведомления в реальном времени
+- WebSocket `/ws`: падение цены, новое сообщение, подтверждение брони, рекомендация, предупреждение/бан, решение по жалобе.
+- Центр уведомлений со счётчиком непрочитанных, пометка «прочитано».
+
+---
+
+## Архитектура
+
+### Общая схема
+
+```
+                         ┌─────────────────────────────┐
+   Браузер / клиент ───► │        FastAPI (main.py)     │
+   (Swagger, фронт)      │  ┌────────────────────────┐  │
+        ▲                │  │ Middleware: CORS,        │  │
+        │  WebSocket /ws │  │ RequestLog + Request-ID  │  │
+        │                │  └────────────────────────┘  │
+        │                │  Routers (modules/*/router)  │
+        │                │   └─ dependencies: JWT/роли,  │
+        │                │      rate-limit              │
+        │                └───────┬──────────┬───────────┘
+        │                        │          │
+        │                 read/write    enqueue task
+        │                        │          │
+        │                        ▼          ▼
+        │                 ┌────────────┐  ┌──────────────┐
+        │                 │ PostgreSQL │  │    Redis     │
+        │                 │ (SQLAlchemy│  │ broker +     │
+        │                 │  + Alembic)│  │ pub/sub      │
+        │                 └────────────┘  └──────┬───────┘
+        │                                        │
+        │   publish realtime event               │ consume tasks
+        │   (Redis pub/sub → WS)                  ▼
+        └──────────────────────────────┐  ┌──────────────┐
+                                        │  │ Celery worker│
+        внешние сервисы ◄───────────────┼──┤ + beat       │
+        OpenRouter (AI) · Mapbox ·      │  │ (tasks.py)   │
+        Gmail SMTP                      │  └──────────────┘
+                                        └─ публикует события в Redis
+```
+
+### Слои (внутри каждого модуля)
+
+Проект построен по принципу **модульной vertical-slice архитектуры**: каждая
+фича — самодостаточная папка в `modules/`, со своим набором из трёх слоёв.
+
+```
+modules/<feature>/
+  router.py    # HTTP-слой: эндпоинты, валидация прав, сериализация ответа
+  crud.py      # слой доступа к данным: запросы к БД, бизнес-операции
+  schemas.py   # контракты: Pydantic-модели запросов/ответов
+```
+
+- **router.py** — только маршрутизация и проверки (`Depends` на аутентификацию,
+  роль, rate-limit). Бизнес-логику не держит.
+- **crud.py** — вся работа с БД и доменная логика. Не знает про HTTP.
+- **schemas.py** — строгие схемы вход/выход (отделены от ORM-моделей).
+
+Общие вещи вынесены в корень и в инфраструктурные модули:
+
+- `models.py` — все ORM-модели и таблицы (единый источник схемы).
+- `config.py` — конфигурация из переменных окружения (`.env`).
+- `dependencies.py` — JWT, `get_current_user`, гварды `require_seller`/`require_admin`.
+- `modules/ai/` — **провайдеро-независимый AI-слой** (OpenAI-совместимый клиент к OpenRouter): текст, function calling, vision.
+- `modules/agent/` — инструменты ИИ-агента + цикл function calling.
+- `modules/realtime/` — менеджер WebSocket-соединений + мост Redis pub/sub.
+- `modules/payments/` — MockPay (платёжные сессии + хостинг-страница оплаты).
+- `modules/email/`, `modules/geo/`, `modules/media/`, `modules/ratelimit/`, `modules/observability/` — почта, геокодинг, загрузка файлов, троттлинг, логирование.
+
+### Как работает асинхронность и realtime
+
+Ключевая идея: **HTTP-запрос не должен ждать тяжёлую работу**.
+
+1. Эндпоинт принимает запрос, делает быструю запись в БД и **ставит задачу в Celery** (`.delay()`), сразу отвечая клиенту.
+2. **Celery worker** (отдельный процесс) берёт задачу из Redis и выполняет: зовёт ИИ, считает рекомендации, рассылает письма, модерирует жалобы.
+3. Worker **публикует событие в Redis pub/sub**.
+4. Процесс API подписан на этот канал и **проталкивает событие в нужный WebSocket** — клиент получает обновление мгновенно, без поллинга.
+
+> Почему через Redis pub/sub: Celery-воркеры живут в отдельных процессах и не
+> имеют доступа к WebSocket-соединениям, которые держит процесс API. Redis
+> служит мостом между ними.
+
+### Поток запроса (пример: вопрос в Spatial Q&A)
+
+```
+POST /spatial-qa
+  → router: проверка JWT + rate-limit, сохранение вопроса в БД (status=pending)
+  → enqueue Celery task process_spatial_qa
+  → ответ 202 клиенту (мгновенно)
+
+Celery worker:
+  → читает скриншот зоны + метаданные объекта
+  → vision-запрос в OpenRouter, сохраняет ответ (status=done)
+  → publish "spatial_qa:done" в Redis
+
+API process:
+  → ловит событие из Redis → шлёт в WebSocket пользователя
+Клиент: получает ответ в реальном времени
+```
+
+### Данные и миграции
+
+- ORM — **SQLAlchemy 2.0**. Источник истины по схеме — **Alembic** (`alembic/`).
+- БД: **PostgreSQL** в проде, **SQLite** для локального запуска и тестов (переключается одной переменной `DATABASE_URL`, код БД-агностичен).
+
+### Принципы устойчивости (graceful degradation)
+
+Проект спроектирован так, чтобы работать даже без внешних сервисов:
+
+- Нет ключа ИИ → агент/Spatial Q&A честно отвечают ошибкой, остальное работает.
+- Нет Redis → realtime-публикация и постановка задач безопасно фолбэчат, запрос не падает.
+- Нет SMTP → код подтверждения возвращается в ответе (`dev_code`) для отладки.
+- Нет Stripe → оплата идёт через встроенный MockPay.
+- Нет Mapbox → ручной пин на карте всё равно работает.
+
+---
+
+## Технологический стек
+
+| Область | Решение |
+|---|---|
+| API | FastAPI (Swagger на `/docs`) |
+| ORM / БД | SQLAlchemy + PostgreSQL (SQLite для локалки/тестов) |
+| Миграции | Alembic |
+| Фоновые задачи | Celery + Redis (брокер, бэкенд результатов, pub/sub) |
+| Realtime | WebSocket `/ws` + мост через Redis pub/sub |
+| Аутентификация | JWT (access + refresh), роли, Google OAuth, коды на почту |
+| ИИ | OpenRouter (OpenAI-совместимый) — function calling + vision |
+| Оплата | Встроенный MockPay (как hosted Stripe Checkout, без ключей) |
+| Карта / геокодинг | Mapbox |
+| Почта | Gmail SMTP (App Password) |
+| Хранилище файлов | Локальный диск (`/media-files`) |
+
+> **Примечание по ТЗ.** В задании указаны Supabase / Claude / Stripe. Чтобы
+> проект запускался бесплатно и оффлайн, используется провайдеро-независимый
+> AI-слой (по умолчанию бесплатный OpenRouter, переключается на Claude/Gemini
+> переменными), локальное хранилище за сменяемым контрактом загрузки,
+> realtime на WebSocket+Redis вместо Supabase Realtime и собственный MockPay
+> вместо Stripe. Поведение то же — меняется только провайдер.
+
+---
+
+## Запуск через Docker (рекомендуется)
 
 ```bash
-cp .env.example .env          # optional: fill in AI/Stripe/Mapbox keys
+cp .env.example .env          # при желании впишите ключи AI/Mapbox/SMTP
 docker compose up --build
 ```
 
-- API: http://localhost:8000  ·  Swagger: http://localhost:8000/docs
-- Brings up Postgres, Redis, the API, a Celery worker, and Celery beat.
-- Host ports: API `8000`, Postgres `5433`, Redis `6380` (chosen to avoid clashes).
+- API: http://localhost:8000 · Swagger: http://localhost:8000/docs
+- Поднимает Postgres, Redis, API, Celery worker и Celery beat.
+- Порты хоста: API `8000`, Postgres `5433`, Redis `6380` (чтобы не конфликтовать).
 
-## Run locally (no Docker)
+## Запуск локально (без Docker)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-python seed_data.py --reset   # demo users + listings + tours
+alembic upgrade head          # создать схему
+python seed_data.py           # демо-данные
 uvicorn main:app --reload
 ```
 
-Local dev defaults to SQLite, so it works without Postgres. For Celery features,
-run Redis and start a worker:
+По умолчанию локально используется SQLite — работает без Postgres. Для фоновых
+задач поднимите Redis и worker:
 
 ```bash
 celery -A celery_app.celery worker --loglevel=info
-celery -A celery_app.celery beat --loglevel=info   # periodic price checks
+celery -A celery_app.celery beat --loglevel=info   # периодическая проверка цен
 ```
 
-## Database migrations (Alembic)
-
-The schema is managed with Alembic (`alembic/`). Apply migrations:
+## Тесты
 
 ```bash
-alembic upgrade head          # create/upgrade all tables
-alembic revision --autogenerate -m "your change"   # after editing models.py
+pytest
 ```
 
-`seed_data.py` also calls `create_all` for zero-config local runs, but Alembic is
-the source of truth for the schema.
+20 тестов на изолированной SQLite-базе (не трогают рабочую БД): аутентификация
+(регистрация/вход/сброс пароля), объявления (каталог, фильтры, карта, ипотека,
+сравнение, поиск, история), избранное, бронь + оплата, чат покупатель↔риелтор
+(reply/edit/delete + контроль доступа), стрелки 360°-тура, health-чек.
 
-## Demo accounts (after seeding)
+## Миграции (Alembic)
 
-Password for all: `demo1234`
+```bash
+alembic upgrade head                               # применить миграции
+alembic revision --autogenerate -m "your change"   # после правок models.py
+```
 
-| Email | Role |
+## Демо-аккаунты (после сидов)
+
+Пароль у всех: `demo1234`
+
+| Email | Роль |
 |---|---|
-| admin@estate.local | admin |
-| realtor@estate.local | seller |
-| agency@estate.local | seller |
-| buyer@estate.local | buyer (has favorites + history) |
+| admin@estate.local | админ |
+| realtor@estate.local | продавец |
+| agency@estate.local | продавец |
+| buyer@estate.local | покупатель (с избранным и историей) |
 
-## Configuration
+## Конфигурация
 
-All keys are environment variables (see `.env.example`). Notable ones:
+Все ключи — в переменных окружения (см. `.env.example`):
 
-- `AI_API_KEY`, `AI_MODEL` — OpenRouter key + tool-capable model
-  (default `google/gemma-4-31b-it:free`).
-- `DATABASE_URL` — SQLite by default; set a Postgres/Supabase URL for production.
-- `STRIPE_SECRET_KEY` — *(removed)* payments use the built-in MockPay gateway;
-  open the returned `checkout_url`, pay with test card `4242 4242 4242 4242`.
-- `MAPBOX_TOKEN` — enables address geocoding (manual pin always wins).
-- `SMTP_USER` / `SMTP_PASSWORD` — Gmail address + **App Password** for emailing
-  verification codes. Without them, `/auth/send-code` returns the code in
-  `dev_code` so the flow stays testable. Set `REQUIRE_EMAIL_VERIFICATION=true`
-  to force email confirmation before password login.
-- `COMPLAINT_THRESHOLD` — complaints against a seller that trigger AI moderation
-  (default 3).
+- `DATABASE_URL` — SQLite по умолчанию; для прода — строка Postgres/Supabase.
+- `AI_API_KEY`, `AI_MODEL` — ключ OpenRouter и модель агента (по умолчанию `google/gemma-4-31b-it:free`); `AI_RECOMMEND_MODEL` — модель для рекомендаций (DeepSeek).
+- `MAPBOX_TOKEN` — геокодинг адреса (ручной пин всегда в приоритете).
+- `SMTP_USER` / `SMTP_PASSWORD` — Gmail + **App Password** для писем с кодами. Без них `/auth/send-code` возвращает код в `dev_code`. `REQUIRE_EMAIL_VERIFICATION=true` — требовать подтверждение почты перед входом по паролю.
+- `COMPLAINT_THRESHOLD` — порог жалоб для запуска ИИ-модерации (по умолчанию 3).
+- `AI_RATE_LIMIT` / `AI_RATE_WINDOW_SEC` — лимит запросов к ИИ на пользователя.
 
-## Modules / API groups
+## Разделы API
 
-Auth, Users, Properties, Map + Infrastructure markers, 360 Tours, Spatial Q&A,
+Auth, Users, Properties, Map + маркеры инфраструктуры, 360 Tours, Spatial Q&A,
 AI Agent, Favorites, Viewing History, Bookings, Payments (MockPay),
 Purchase/Viewing Requests, Messages (Contact Realtor), Price Trackers,
 Recommendations (+ AI rerank), Complaints, Admin, Seller Dashboard,
-Notifications, Realtime (`/ws`), Media.
+Notifications, Realtime (`/ws`), Media. Полная интерактивная документация — `/docs`.
 
-Full interactive documentation is generated at **`/docs`**.
+## Celery-задачи
 
-## Celery tasks
-
-| Task | Trigger |
+| Задача | Триггер |
 |---|---|
-| `process_spatial_qa` | a zone question is submitted |
-| `update_recommendations` | after each new view/favorite |
-| `track_price_changes` | on a price drop + every 30 min (beat) |
-| `moderate_seller` | seller reaches the complaint threshold |
-| `send_notification` | universal dispatcher |
-| `send_email_code` | email a verification/login code (Gmail SMTP) |
+| `process_spatial_qa` | задан вопрос по зоне в туре |
+| `update_recommendations` | после каждого просмотра/добавления в избранное |
+| `track_price_changes` | при падении цены + каждые 30 мин (beat) |
+| `moderate_seller` | продавец достиг порога жалоб |
+| `send_notification` | универсальный диспетчер уведомлений |
+| `send_email_code` | письмо с кодом подтверждения/входа (Gmail SMTP) |
 
-## Project layout
+## Структура проекта
 
 ```
-main.py            # FastAPI app + router wiring + realtime listener
-config.py          # env-driven settings
-models.py          # SQLAlchemy models (all tables)
-dependencies.py    # JWT auth + role guards
-celery_app.py      # Celery app + beat schedule
-tasks.py           # the 5 Celery tasks
-seed_data.py       # demo data
-modules/<feature>/ # router.py (+ crud.py, schemas.py) per feature
-  ai/              # provider-agnostic AI layer (OpenRouter)
-  agent/           # AI agent tools + function-calling loop
-  realtime/        # WebSocket manager + Redis pub/sub bridge
+main.py            # сборка приложения, подключение роутеров, realtime-listener
+config.py          # настройки из окружения
+models.py          # все ORM-модели
+dependencies.py    # JWT-аутентификация и ролевые гварды
+celery_app.py      # Celery-приложение + расписание beat
+tasks.py           # Celery-задачи
+seed_data.py       # демо-данные
+alembic/           # миграции схемы
+tests/             # pytest-набор
+modules/<feature>/ # router.py (+ crud.py, schemas.py) на каждую фичу
+  ai/              # провайдеро-независимый AI-слой (OpenRouter)
+  agent/           # инструменты ИИ-агента + цикл function calling
+  realtime/        # WebSocket-менеджер + мост Redis pub/sub
+  payments/        # MockPay (платёжный шлюз-имитация)
+  email/ geo/ media/ ratelimit/ observability/   # инфраструктурные модули
 ```

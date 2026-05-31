@@ -175,3 +175,15 @@ class ComparisonResult(BaseModel):
     cheapest_id: int | None = None
     largest_id: int | None = None
     best_value_id: int | None = None  # lowest price per m²
+
+
+class AIReviewResult(BaseModel):
+    verdict: str  # great_deal | fair | overpriced | suspicious | likely_scam | insufficient_data
+    deal_score: int  # 0..100
+    scam_risk: str  # low | medium | high | unknown
+    summary: str
+    pros: list[str] = []
+    cons: list[str] = []
+    red_flags: list[str] = []
+    market: dict = {}
+    ai_used: bool = False
