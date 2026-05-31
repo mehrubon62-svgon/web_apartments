@@ -67,6 +67,11 @@ def update_user(db: Session, user_id: int, **fields) -> User | None:
     return user
 
 
+def set_password(db: Session, user: User, new_password: str) -> None:
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+
+
 # ---- Refresh tokens ----
 
 def create_refresh_token(db: Session, user_id: int) -> RefreshToken:

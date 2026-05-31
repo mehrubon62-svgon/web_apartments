@@ -149,12 +149,38 @@ def seed():
                 # A small price drop in history for realism.
                 db.add(PriceHistory(property_id=prop.id, price=round(prop.price * 1.05, 2)))
 
-                # 360 tour
-                db.add(Tour(property_id=prop.id, rooms=[
-                    {"id": "living", "name": "Living room", "media_url": PANO,
-                     "links": [{"to_room_id": "kitchen", "yaw": 120, "pitch": 0, "label": "Kitchen"}]},
-                    {"id": "kitchen", "name": "Kitchen", "media_url": PANO, "links": []},
-                ]))
+                # 360 tour: 3 rooms connected with Street-View-style arrows.
+                db.add(Tour(property_id=prop.id, rooms={
+                    "first_room_id": "living",
+                    "rooms": [
+                        {
+                            "id": "living", "name": "Living room", "media_url": PANO,
+                            "init_yaw": 0, "init_pitch": 0, "init_hfov": 100,
+                            "links": [
+                                {"to_room_id": "kitchen", "yaw": 120, "pitch": -10,
+                                 "target_yaw": -60, "label": "To kitchen"},
+                                {"to_room_id": "bedroom", "yaw": -120, "pitch": -10,
+                                 "target_yaw": 60, "label": "To bedroom"},
+                            ],
+                        },
+                        {
+                            "id": "kitchen", "name": "Kitchen", "media_url": PANO,
+                            "init_yaw": 0, "init_pitch": 0, "init_hfov": 100,
+                            "links": [
+                                {"to_room_id": "living", "yaw": -60, "pitch": -10,
+                                 "target_yaw": 120, "label": "Back to living room"},
+                            ],
+                        },
+                        {
+                            "id": "bedroom", "name": "Bedroom", "media_url": PANO,
+                            "init_yaw": 0, "init_pitch": 0, "init_hfov": 100,
+                            "links": [
+                                {"to_room_id": "living", "yaw": 60, "pitch": -10,
+                                 "target_yaw": -120, "label": "Back to living room"},
+                            ],
+                        },
+                    ],
+                }))
 
                 if deal == DealType.rent:
                     start = date.today() + timedelta(days=random.randint(1, 10))

@@ -71,16 +71,19 @@ def code_email(code: str, purpose: str, ttl_min: int) -> tuple[str, str, str]:
     }
     subject = titles.get(purpose, "Your code") + f" — {code}"
     text = (
+        f"Nestora\n\n"
         f"Your verification code is: {code}\n\n"
         f"It expires in {ttl_min} minutes. If you didn't request this, ignore this email."
     )
     html = f"""\
 <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:420px;margin:auto">
+  <div style="font-size:22px;font-weight:700;color:#635bff;margin-bottom:8px">Nestora</div>
   <h2 style="color:#111">{titles.get(purpose, 'Your code')}</h2>
   <p style="color:#444">Use this code to continue:</p>
   <div style="font-size:32px;font-weight:700;letter-spacing:6px;background:#f4f4f7;
               padding:16px;text-align:center;border-radius:10px;color:#111">{code}</div>
   <p style="color:#888;font-size:13px;margin-top:16px">Expires in {ttl_min} minutes.
      If you didn't request this, you can ignore this email.</p>
+  <p style="color:#bbb;font-size:12px;margin-top:20px">— The Nestora team</p>
 </div>"""
     return subject, text, html

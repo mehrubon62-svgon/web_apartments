@@ -527,7 +527,9 @@ class DirectMessage(Base):
     is_read = Column(Boolean, default=False, nullable=False, index=True)
     is_edited = Column(Boolean, default=False, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
+    reply_to_id = Column(Integer, ForeignKey("direct_messages.id", ondelete="SET NULL"), nullable=True)
     edited_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     conversation = relationship("Conversation", back_populates="messages")
+    reply_to = relationship("DirectMessage", remote_side=[id])

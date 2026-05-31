@@ -26,6 +26,14 @@ celery.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_acks_late=True,
+    # Fail fast when the broker is unreachable so API callers can fall back
+    # (e.g. send email inline) instead of hanging on connection retries.
+    broker_connection_retry_on_startup=False,
+    broker_connection_max_retries=0,
+    broker_transport_options={
+        "socket_connect_timeout": 2,
+        "socket_timeout": 2,
+    },
 )
 
 # Periodic: re-check tracked prices every 30 minutes.

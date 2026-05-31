@@ -30,6 +30,8 @@ from modules.properties.schemas import (
     AvailabilityOut,
     MortgageRequest,
     MortgageResponse,
+    ComparisonRow,
+    ComparisonResult,
 )
 from modules.properties.crud import (
     create_property,
@@ -37,6 +39,7 @@ from modules.properties.crud import (
     update_property,
     delete_property,
     search_properties,
+    text_search,
     map_markers,
     has_tour,
     is_favorited,
@@ -108,7 +111,68 @@ def list_properties(
     )
 
 
-# ===== Map =====
+# ===== Compare =====
+
+@router.get("/search", response_model=PropertyList)
+def search_text(
+    q: str = Query(..., min_length=1, max_length=100, description="Search title, description, address"),
+    limit: int = Query(20, le=100),
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Global text search across title, description and address."""
+    items, total = text_search(db, q, limit, offset)
+    return PropertyList(
+        items=[serialize(db, p, current_user.id) for p in items],
+        total=total,
+    )
+
+
+@router.get("/compare", response_model=ComparisonResult)
+def compare(
+    ids: str = Query(..., description="Comma-separated property ids, e.g. '1,2,3'"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Compare 2-4 properties side by side (price, area, price/m², rating)."""
+    try:
+        id_list = [int(x) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ids must be comma-separated integers")
+    if not (2 <= len(id_list) <= 4):
+        raise HTTPException(status_code=400, detail="Provide between 2 and 4 ids")
+
+    rows: list[ComparisonRow] = []
+    for pid in id_list:
+        prop = get_property(db, pid)
+        if not prop or prop.status == PropertyStatus.deleted:
+            raise HTTPException(status_code=404, detail=f"Property {pid} not found")
+        ppsqm = round(prop.price / prop.area, 2) if prop.area else 0.0
+        rows.append(
+            ComparisonRow(
+                id=prop.id,
+                title=prop.title,
+                type=prop.type,
+                deal_type=prop.deal_type,
+                price=prop.price,
+                area=prop.area,
+                rooms=prop.rooms,
+                price_per_sqm=ppsqm,
+                avg_rating=avg_rating(db, prop.id),
+                has_tour=has_tour(db, prop.id),
+            )
+        )
+
+    cheapest = min(rows, key=lambda r: r.price)
+    largest = max(rows, key=lambda r: r.area)
+    best_value = min(rows, key=lambda r: r.price_per_sqm)
+    return ComparisonResult(
+        items=rows,
+        cheapest_id=cheapest.id,
+        largest_id=largest.id,
+        best_value_id=best_value.id,
+    )
 
 @router.get("/map", response_model=list[MapMarker])
 def map_view(
@@ -271,6 +335,44 @@ def remove(
 
 
 # ===== Price history (sale) =====
+
+@router.get("/{property_id}/similar", response_model=PropertyList)
+def similar(
+    property_id: int,
+    limit: int = Query(6, le=20),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Similar active listings: same deal type, then ranked by closeness in
+    type, price and area (great for 'more like this' on a listing page)."""
+    base = get_property(db, property_id)
+    if not base or base.status == PropertyStatus.deleted:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    candidates, _ = search_properties(db, deal_type=base.deal_type, limit=500, offset=0)
+
+    def score(p: Property) -> float:
+        s = 0.0
+        if p.type == base.type:
+            s += 2.0
+        if base.price > 0:
+            s += max(0.0, 1.0 - abs(p.price - base.price) / base.price)
+        if base.area > 0:
+            s += max(0.0, 1.0 - abs(p.area - base.area) / base.area)
+        if base.rooms and p.rooms == base.rooms:
+            s += 0.5
+        return s
+
+    ranked = sorted(
+        (p for p in candidates if p.id != base.id),
+        key=score,
+        reverse=True,
+    )[:limit]
+    return PropertyList(
+        items=[serialize(db, p, current_user.id) for p in ranked],
+        total=len(ranked),
+    )
+
 
 @router.get("/{property_id}/price-history", response_model=list[PriceHistoryPoint])
 def price_history(

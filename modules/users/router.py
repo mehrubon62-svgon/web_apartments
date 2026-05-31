@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from models import get_db, User, EmailCodePurpose
@@ -17,6 +17,8 @@ from modules.users.schemas import (
     GoogleAuthRequest,
     SendCodeRequest,
     VerifyCodeRequest,
+    PasswordResetRequest,
+    PasswordChange,
 )
 from modules.users.crud import (
     get_user_by_email,
@@ -24,6 +26,7 @@ from modules.users.crud import (
     get_user_by_google_sub,
     create_user,
     update_user,
+    set_password,
     verify_password,
     create_refresh_token,
     get_refresh_token,
@@ -45,18 +48,31 @@ def _parse_purpose(value: str) -> EmailCodePurpose:
         raise HTTPException(status_code=400, detail="Invalid purpose. Use verify | login | reset")
 
 
+def _send_code_async(email: str, code: str, purpose_value: str) -> None:
+    """Deliver the code without blocking the request.
+
+    Prefer the Celery task (real broker). If the broker is unreachable, send the
+    email directly from a background thread so the HTTP response isn't held up by
+    SMTP latency.
+    """
+    def _worker():
+        try:
+            from tasks import send_email_code
+            send_email_code.delay(email, code, purpose_value)
+        except Exception:
+            from modules.email.service import send_email, code_email
+            subject, text, html = code_email(code, purpose_value, EMAIL_CODE_TTL_MIN)
+            send_email(email, subject, text, html)
+
+    import threading
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def _dispatch_code(db: Session, email: str, purpose: EmailCodePurpose) -> dict:
-    """Create a code and send it via Celery email task (sync fallback). In dev,
-    when SMTP isn't configured, the code is returned so the flow stays testable."""
+    """Create a code and trigger its delivery (non-blocking). In dev, when SMTP
+    isn't configured, the code is returned so the flow stays testable."""
     code = create_code(db, email, purpose)
-    try:
-        from tasks import send_email_code
-        send_email_code.delay(email, code, purpose.value)
-    except Exception:
-        # Broker down -> send the email directly (no Celery retry machinery).
-        from modules.email.service import send_email, code_email
-        subject, text, html = code_email(code, purpose.value, EMAIL_CODE_TTL_MIN)
-        send_email(email, subject, text, html)
+    _send_code_async(email, code, purpose.value)
 
     resp = {"detail": "Verification code sent", "expires_in_min": EMAIL_CODE_TTL_MIN}
     if not email_configured():
@@ -140,6 +156,21 @@ def login_with_code(data: VerifyCodeRequest, db: Session = Depends(get_db)):
     return _issue_tokens(db, user)
 
 
+@router.post("/reset-password")
+def reset_password(data: PasswordResetRequest, db: Session = Depends(get_db)):
+    """Set a new password using the code sent via /auth/send-code (purpose=reset)."""
+    ok, reason = verify_code(db, data.email, EmailCodePurpose.reset, data.code)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    user = get_user_by_email(db, data.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    set_password(db, user, data.new_password)
+    # Security: invalidate all existing sessions after a password reset.
+    revoke_all_user_tokens(db, user.id)
+    return {"detail": "Password reset. Please log in with your new password."}
+
+
 @router.post("/login", response_model=Token)
 def login(data: UserLogin, db: Session = Depends(get_db)):
     user = get_user_by_email(db, data.email)
@@ -181,19 +212,35 @@ def google_auth(data: GoogleAuthRequest, db: Session = Depends(get_db)):
     if not sub or not email:
         raise HTTPException(status_code=401, detail="Google token missing claims")
 
+    google_name = info.get("name")
+    google_avatar = info.get("picture")
+    # Google verifies emails itself; the claim is "true"/"True" or bool.
+    google_email_verified = str(info.get("email_verified", "true")).lower() == "true"
+
     user = get_user_by_google_sub(db, sub) or get_user_by_email(db, email)
     if not user:
+        # New account — prefill name + avatar straight from the Google profile.
         user = create_user(
             db,
             email=email,
             password=None,
-            full_name=info.get("name"),
+            full_name=google_name,
             role=data.role,
             google_sub=sub,
-            avatar_url=info.get("picture"),
+            avatar_url=google_avatar,
         )
-    elif not user.google_sub:
-        user.google_sub = sub
+        user.is_email_verified = google_email_verified
+        db.commit()
+    else:
+        # Existing account — link Google and backfill any missing profile fields.
+        if not user.google_sub:
+            user.google_sub = sub
+        if not user.full_name and google_name:
+            user.full_name = google_name
+        if not user.avatar_url and google_avatar:
+            user.avatar_url = google_avatar
+        if google_email_verified:
+            user.is_email_verified = True
         db.commit()
 
     if not user.is_active:
@@ -243,6 +290,32 @@ def edit_me(
     user: User = Depends(get_current_user),
 ):
     return update_user(db, user.id, **data.model_dump(exclude_unset=True))
+
+
+@users_router.post("/me/change-password")
+def change_password(
+    data: PasswordChange,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Change password while logged in (requires the current password)."""
+    if not verify_password(data.old_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    set_password(db, user, data.new_password)
+    revoke_all_user_tokens(db, user.id)
+    return {"detail": "Password changed. Please log in again."}
+
+
+@users_router.post("/me/avatar", response_model=UserMe)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Upload a profile picture (image). Replaces the current avatar."""
+    from modules.media.router import save_upload
+    result = await save_upload(file)
+    return update_user(db, user.id, avatar_url=result.url)
 
 
 @users_router.delete("/me")

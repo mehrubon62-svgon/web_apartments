@@ -13,6 +13,7 @@ class StartConversationIn(BaseModel):
 
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    reply_to_id: int | None = None
 
 
 class MessageEdit(BaseModel):
@@ -28,6 +29,7 @@ class MessageOut(BaseModel):
     attachment_name: str | None = None
     attachment_type: str | None = None
     attachment_size: int | None = None
+    reply_to_id: int | None = None
     is_read: bool
     is_edited: bool = False
     is_deleted: bool = False

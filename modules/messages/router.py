@@ -125,9 +125,34 @@ def send_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
     _ensure_member(convo, current_user.id)
 
-    msg = add_message(db, convo, current_user.id, text=data.text)
+    # Validate reply target belongs to this conversation.
+    if data.reply_to_id is not None:
+        parent = get_message(db, data.reply_to_id)
+        if not parent or parent.conversation_id != conversation_id:
+            raise HTTPException(status_code=400, detail="Invalid reply target")
+
+    msg = add_message(db, convo, current_user.id, text=data.text, reply_to_id=data.reply_to_id)
     _notify_recipient(db, convo, current_user, _preview(msg))
     return MessageOut.model_validate(msg)
+
+
+@router.post("/{conversation_id}/read")
+def mark_conversation_read(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark all messages from the other party as read."""
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_member(convo, current_user.id)
+    count = mark_read(db, conversation_id, current_user.id)
+
+    # Tell the other party their messages were read (read receipts).
+    other_id = convo.seller_id if current_user.id == convo.buyer_id else convo.buyer_id
+    publish_event_sync(other_id, "message:read", {"conversation_id": convo.id, "by_user_id": current_user.id})
+    return {"detail": "Marked as read", "updated": count}
 
 
 @router.post("/{conversation_id}/messages/upload", response_model=MessageOut, status_code=201)

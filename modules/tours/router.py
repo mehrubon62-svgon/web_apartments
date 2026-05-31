@@ -17,6 +17,21 @@ def _get_property(db: Session, property_id: int) -> Property:
     return prop
 
 
+def _rooms(tour: Tour) -> list[dict]:
+    data = tour.rooms or []
+    # Backwards-compat: tours stored as a bare list vs. {"rooms": [...]}
+    if isinstance(data, dict):
+        return data.get("rooms", [])
+    return data
+
+
+def _first_room_id(tour: Tour, rooms: list[dict]) -> str | None:
+    data = tour.rooms
+    if isinstance(data, dict) and data.get("first_room_id"):
+        return data["first_room_id"]
+    return rooms[0]["id"] if rooms else None
+
+
 @router.get("/{property_id}", response_model=TourOut)
 def get_tour(
     property_id: int,
@@ -33,7 +48,13 @@ def get_tour(
     from modules.history.crud import track_view
     track_view(db, current_user.id, property_id)
 
-    return TourOut(id=tour.id, property_id=property_id, rooms=tour.rooms or [])
+    rooms = _rooms(tour)
+    return TourOut(
+        id=tour.id,
+        property_id=property_id,
+        first_room_id=_first_room_id(tour, rooms),
+        rooms=rooms,
+    )
 
 
 @router.put("/{property_id}", response_model=TourOut)
@@ -43,21 +64,87 @@ def upsert_tour(
     db: Session = Depends(get_db),
     seller: User = Depends(require_seller),
 ):
-    """Create or replace the 360° tour (seller only)."""
+    """Create or replace the 360° tour (seller only).
+
+    Each room can define `links` — arrow hotspots that walk the viewer to
+    another room, like the navigation arrows in Google Street View.
+    """
     prop = _get_property(db, property_id)
     if prop.seller_id != seller.id and seller.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not your listing")
 
     rooms = [r.model_dump() for r in data.rooms]
+    first_room_id = data.first_room_id or (rooms[0]["id"] if rooms else None)
+    payload = {"rooms": rooms, "first_room_id": first_room_id}
+
     tour = db.query(Tour).filter(Tour.property_id == property_id).first()
     if tour:
-        tour.rooms = rooms
+        tour.rooms = payload
     else:
-        tour = Tour(property_id=property_id, rooms=rooms)
+        tour = Tour(property_id=property_id, rooms=payload)
         db.add(tour)
     db.commit()
     db.refresh(tour)
-    return TourOut(id=tour.id, property_id=property_id, rooms=tour.rooms or [])
+    return TourOut(id=tour.id, property_id=property_id, first_room_id=first_room_id, rooms=rooms)
+
+
+@router.get("/{property_id}/pannellum")
+def pannellum_config(
+    property_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ready-to-use Pannellum multi-scene config.
+
+    The frontend can feed this straight into `pannellum.viewer(el, config)`.
+    Each room becomes a scene; each link becomes a clickable 'scene' hotspot
+    (the navigation arrow) that transitions to the linked panorama and faces
+    `targetYaw` on arrival.
+    """
+    _get_property(db, property_id)
+    tour = db.query(Tour).filter(Tour.property_id == property_id).first()
+    if not tour:
+        raise HTTPException(status_code=404, detail="No tour for this property")
+
+    rooms = _rooms(tour)
+    if not rooms:
+        raise HTTPException(status_code=404, detail="Tour has no rooms")
+
+    scenes: dict[str, dict] = {}
+    for room in rooms:
+        hotspots = []
+        for link in room.get("links", []):
+            hs = {
+                "type": "scene",
+                "text": link.get("label") or "Go",
+                "yaw": link.get("yaw", 0.0),
+                "pitch": link.get("pitch", 0.0),
+                "sceneId": link["to_room_id"],
+                "cssClass": "pnlm-scene-arrow",  # frontend styles this as an arrow
+            }
+            if link.get("target_yaw") is not None:
+                hs["targetYaw"] = link["target_yaw"]
+            hotspots.append(hs)
+
+        scenes[room["id"]] = {
+            "title": room.get("name"),
+            "type": "equirectangular",
+            "panorama": room["media_url"],
+            "yaw": room.get("init_yaw", 0.0),
+            "pitch": room.get("init_pitch", 0.0),
+            "hfov": room.get("init_hfov", 100.0),
+            "hotSpots": hotspots,
+        }
+
+    first_scene = _first_room_id(tour, rooms)
+    return {
+        "default": {
+            "firstScene": first_scene,
+            "sceneFadeDuration": 1000,  # smooth crossfade between panoramas
+            "autoLoad": True,
+        },
+        "scenes": scenes,
+    }
 
 
 @router.get("/{property_id}/share", response_model=ShareResponse)

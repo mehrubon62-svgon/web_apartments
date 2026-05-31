@@ -125,6 +125,24 @@ def map_markers(db: Session, **filters):
     return [p for p in items if p.lat is not None and p.lng is not None]
 
 
+def text_search(db: Session, query: str, limit: int = 20, offset: int = 0):
+    """Full-text-ish search over title, description and address (active only)."""
+    like = f"%{query.lower()}%"
+    q = (
+        _base_query(db)
+        .filter(Property.status == PropertyStatus.active)
+        .filter(
+            func.lower(Property.title).like(like)
+            | func.lower(func.coalesce(Property.description, "")).like(like)
+            | func.lower(func.coalesce(Property.address, "")).like(like)
+        )
+        .order_by(Property.created_at.desc())
+    )
+    total = q.count()
+    items = q.offset(offset).limit(limit).all()
+    return items, total
+
+
 def has_tour(db: Session, property_id: int) -> bool:
     return db.query(Tour).filter(Tour.property_id == property_id).first() is not None
 

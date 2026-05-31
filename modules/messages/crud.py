@@ -30,6 +30,7 @@ def add_message(
     sender_id: int,
     text: str | None = None,
     attachment: dict | None = None,
+    reply_to_id: int | None = None,
 ) -> DirectMessage:
     msg = DirectMessage(
         conversation_id=conversation.id,
@@ -39,6 +40,7 @@ def add_message(
         attachment_name=(attachment or {}).get("name"),
         attachment_type=(attachment or {}).get("type"),
         attachment_size=(attachment or {}).get("size"),
+        reply_to_id=reply_to_id,
     )
     db.add(msg)
     conversation.last_message_at = utcnow()

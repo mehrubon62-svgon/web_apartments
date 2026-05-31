@@ -47,6 +47,17 @@ class VerifyCodeRequest(BaseModel):
     purpose: str = "verify"
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=8)
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+
 class UserPublic(BaseModel):
     id: int
     full_name: str | None = None
@@ -62,6 +73,7 @@ class UserMe(UserPublic):
     email: str
     phone: str | None = None
     status: UserStatus
+    is_email_verified: bool = False
     created_at: datetime
 
 

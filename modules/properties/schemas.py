@@ -155,3 +155,23 @@ class MortgageResponse(BaseModel):
     monthly_payment: float
     total_paid: float
     total_interest: float
+
+
+class ComparisonRow(BaseModel):
+    id: int
+    title: str
+    type: PropertyType
+    deal_type: DealType
+    price: float
+    area: float
+    rooms: int | None
+    price_per_sqm: float
+    avg_rating: float | None
+    has_tour: bool
+
+
+class ComparisonResult(BaseModel):
+    items: list[ComparisonRow]
+    cheapest_id: int | None = None
+    largest_id: int | None = None
+    best_value_id: int | None = None  # lowest price per m²
