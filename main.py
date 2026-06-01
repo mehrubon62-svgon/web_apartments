@@ -167,4 +167,21 @@ def health():
 # index.html and unknown paths fall back to it (client-side routing).
 _FRONTEND_DIR = Path(__file__).parent / "frontend"
 _FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """Static files with caching disabled — avoids browsers serving stale JS/CSS
+    during development (the source of 'nothing changed after reload')."""
+
+    def is_not_modified(self, response_headers, request_headers) -> bool:  # noqa: ARG002
+        return False
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+
+app.mount("/", NoCacheStaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
