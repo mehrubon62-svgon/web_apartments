@@ -279,11 +279,9 @@ def retrieve(
         from modules.history.crud import track_view
         track_view(db, current_user.id, prop.id)
         increment_views(db, prop)
-        try:
-            from tasks import update_recommendations
-            update_recommendations.delay(current_user.id)
-        except Exception:
-            pass
+        from modules.queue import enqueue
+        from tasks import update_recommendations
+        enqueue(update_recommendations, current_user.id)
 
     return serialize(db, prop, current_user.id)
 
@@ -314,11 +312,9 @@ def edit(
 
     # Price dropped -> let the tracker task notify watchers.
     if "price" in fields and fields["price"] is not None and prop.price < old_price:
-        try:
-            from tasks import track_price_changes
-            track_price_changes.delay(prop.id)
-        except Exception:
-            pass
+        from modules.queue import enqueue
+        from tasks import track_price_changes
+        enqueue(track_price_changes, prop.id)
 
     return serialize(db, prop, seller.id)
 

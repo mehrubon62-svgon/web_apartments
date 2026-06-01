@@ -72,11 +72,8 @@ def submit_complaint(
     # Trigger AI moderation at the threshold (only while still active).
     total = db.query(Complaint).filter(Complaint.seller_id == data.seller_id).count()
     if total >= COMPLAINT_THRESHOLD and seller.status == UserStatus.active:
-        try:
-            from tasks import moderate_seller
-            moderate_seller.delay(data.seller_id)
-        except Exception:
-            from tasks import moderate_seller
-            moderate_seller(data.seller_id)
+        from modules.queue import enqueue
+        from tasks import moderate_seller
+        enqueue(moderate_seller, data.seller_id, fallback=lambda: moderate_seller(data.seller_id))
 
     return ComplaintOut.model_validate(complaint)

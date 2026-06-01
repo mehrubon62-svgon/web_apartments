@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Nestora — AI-маркетплейс недвижимости</title>
+  <meta name="description" content="Nestora — иммерсивный AI-маркетплейс недвижимости: карта, 360°-туры, Spatial Q&A, ИИ-агент, онлайн-бронь." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Mapbox GL (deferred — non-blocking during initial paint) -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet" />
+  <script defer src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+
+  <!-- Pannellum 360 viewer (deferred) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+
+  <!-- Runtime config (Mapbox/Google tokens) from the API -->
+  <script src="/config.js"></script>
+
+  <!-- Apply theme/language synchronously to avoid FOUC (flash on reload) -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('nestora_theme') || 'light';
+        document.documentElement.setAttribute('data-theme', t);
+        var l = localStorage.getItem('nestora_lang') || 'ru';
+        document.documentElement.setAttribute('lang', l);
+      } catch (e) {}
+    })();
+  </script>
+
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A1%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="container header-inner">
+        <a class="logo" href="#/">
+          <span class="dot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:26px;height:26px"><path d="M5 21 V11 Q12 3 19 11 V21"/><path d="M10 21 V17 Q12 14 14 17 V21"/></svg>
+          </span>
+          <span class="wm"><b>Nest</b><i>o</i><b>ra</b></span>
+        </a>
+        <div class="header-spacer"></div>
+      </div>
+    </header>
+    <main id="main-content" style="min-height: calc(100vh - 70px)">
+      <div class="page">
+        <div class="container">
+          <div class="hero">
+            <h1>Найдите дом, в который захочется вернуться</h1>
+            <p>Иммерсивные 360°-туры, ответы ИИ про любую зону квартиры и честные сделки онлайн.</p>
+            <div class="hero-search">
+              <input placeholder="Поиск: «двушка у метро», адрес, район..." />
+              <button class="btn btn-primary">Искать</button>
+            </div>
+            <div class="hero-stats">
+              <div><b>360°</b><span>Виртуальные туры</span></div>
+              <div><b>AI</b><span>Spatial Q&amp;A</span></div>
+              <div><b>0%</b><span>Комиссия за просмотр</span></div>
+            </div>
+          </div>
+          <div class="page-head">
+            <div>
+              <div class="page-title">Каталог недвижимости</div>
+              <div class="page-sub">Загрузка...</div>
+            </div>
+          </div>
+          <div class="grid grid-props">
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+            <div class="skel skel-card"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+  <div id="modal-root"></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

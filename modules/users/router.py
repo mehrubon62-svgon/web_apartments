@@ -56,13 +56,15 @@ def _send_code_async(email: str, code: str, purpose_value: str) -> None:
     SMTP latency.
     """
     def _worker():
-        try:
-            from tasks import send_email_code
-            send_email_code.delay(email, code, purpose_value)
-        except Exception:
+        from modules.queue import enqueue
+        from tasks import send_email_code
+
+        def _inline():
             from modules.email.service import send_email, code_email
             subject, text, html = code_email(code, purpose_value, EMAIL_CODE_TTL_MIN)
             send_email(email, subject, text, html)
+
+        enqueue(send_email_code, email, code, purpose_value, fallback=_inline)
 
     import threading
     threading.Thread(target=_worker, daemon=True).start()

@@ -4,9 +4,10 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import MEDIA_DIR
+from config import MEDIA_DIR, MAPBOX_TOKEN, GOOGLE_CLIENT_ID, AI_API_KEY
 from models import Base, engine
 from modules.observability.middleware import RequestLogMiddleware, configure_logging
 
@@ -105,9 +106,33 @@ app.include_router(realtime_router)
 app.mount("/media-files", StaticFiles(directory=MEDIA_DIR), name="media-files")
 
 
-@app.get("/", tags=["Meta"])
-def root():
+@app.get("/api", tags=["Meta"])
+def api_root():
     return {"name": "Nestora API", "version": "1.0.0", "docs": "/docs"}
+
+
+@app.get("/config.js", tags=["Meta"])
+def frontend_config():
+    """Expose public, frontend-safe config (Mapbox public token, Google client id).
+
+    Served as JS so the SPA can read it synchronously before booting. Only public
+    tokens are included here — never secrets like the AI key or SMTP password.
+    """
+    from fastapi.responses import Response
+
+    cfg = (
+        "window.NESTORA_CONFIG = "
+        + __import__("json").dumps(
+            {
+                "mapboxToken": MAPBOX_TOKEN or "",
+                "googleClientId": GOOGLE_CLIENT_ID or "",
+                "aiEnabled": bool(AI_API_KEY),
+                "apiBase": "",
+            }
+        )
+        + ";"
+    )
+    return Response(content=cfg, media_type="application/javascript")
 
 
 @app.get("/health", tags=["Meta"])
@@ -135,3 +160,11 @@ def health():
 
     status = "ok" if db_ok else "degraded"
     return {"status": status, "database": db_ok, "redis": redis_ok}
+
+
+# ===== Frontend (single-page app) =====
+# Served last so API routes always take precedence. html=True makes "/" return
+# index.html and unknown paths fall back to it (client-side routing).
+_FRONTEND_DIR = Path(__file__).parent / "frontend"
+_FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
