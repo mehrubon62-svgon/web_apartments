@@ -13,7 +13,7 @@ from models import (
     DealType,
     PropertyType,
 )
-from dependencies import get_current_user, require_seller
+from dependencies import get_current_user, get_optional_user, require_seller
 from modules.geo.service import geocode, haversine_km
 from modules.ratelimit.limiter import rate_limit
 from modules.properties.schemas import (
@@ -95,7 +95,7 @@ def list_properties(
     limit: int = Query(20, le=100),
     offset: int = 0,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     items, total = search_properties(
         db,
@@ -110,7 +110,7 @@ def list_properties(
         offset=offset,
     )
     return PropertyList(
-        items=[serialize(db, p, current_user.id) for p in items],
+        items=[serialize(db, p, current_user.id if current_user else None) for p in items],
         total=total,
     )
 
@@ -123,12 +123,12 @@ def search_text(
     limit: int = Query(20, le=100),
     offset: int = 0,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Global text search across title, description and address."""
     items, total = text_search(db, q, limit, offset)
     return PropertyList(
-        items=[serialize(db, p, current_user.id) for p in items],
+        items=[serialize(db, p, current_user.id if current_user else None) for p in items],
         total=total,
     )
 
@@ -137,7 +137,7 @@ def search_text(
 def compare(
     ids: str = Query(..., description="Comma-separated property ids, e.g. '1,2,3'"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Compare 2-4 properties side by side (price, area, price/m², rating)."""
     try:
@@ -185,7 +185,7 @@ def map_view(
     min_price: float | None = None,
     max_price: float | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Markers for the Mapbox map (only active listings with coordinates)."""
     props = map_markers(
@@ -204,7 +204,7 @@ def map_view(
 def map_infrastructure(
     kind: str | None = Query(None, description="Filter: metro | school | shop"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Infrastructure markers (metro, schools, shops) for the map overlay."""
     q = db.query(InfrastructurePOI)
@@ -222,7 +222,7 @@ def nearby(
     deal_type: DealType | None = None,
     type: PropertyType | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Radius search from a geolocation point."""
     props = map_markers(db, deal_type=deal_type, type=type)
@@ -231,7 +231,7 @@ def nearby(
         if haversine_km(lat, lng, p.lat, p.lng) <= radius_km:
             within.append(p)
     return PropertyList(
-        items=[serialize(db, p, current_user.id) for p in within],
+        items=[serialize(db, p, current_user.id if current_user else None) for p in within],
         total=len(within),
     )
 
@@ -268,14 +268,14 @@ def create(
 def retrieve(
     property_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     prop = get_property(db, property_id)
     if not prop or prop.status == PropertyStatus.deleted:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Track the view (skip the owner) and update recommendations in the background.
-    if prop.seller_id != current_user.id:
+    # Track the view (only for logged-in non-owners) and update recommendations.
+    if current_user and prop.seller_id != current_user.id:
         from modules.history.crud import track_view
         track_view(db, current_user.id, prop.id)
         increment_views(db, prop)
@@ -283,7 +283,7 @@ def retrieve(
         from tasks import update_recommendations
         enqueue(update_recommendations, current_user.id)
 
-    return serialize(db, prop, current_user.id)
+    return serialize(db, prop, current_user.id if current_user else None)
 
 
 @router.put("/{property_id}", response_model=PropertyOut)
@@ -362,7 +362,7 @@ def similar(
     property_id: int,
     limit: int = Query(6, le=20),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Similar active listings: same deal type, then ranked by closeness in
     type, price and area (great for 'more like this' on a listing page)."""
@@ -390,7 +390,7 @@ def similar(
         reverse=True,
     )[:limit]
     return PropertyList(
-        items=[serialize(db, p, current_user.id) for p in ranked],
+        items=[serialize(db, p, current_user.id if current_user else None) for p in ranked],
         total=len(ranked),
     )
 
@@ -399,7 +399,7 @@ def similar(
 def price_history(
     property_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     prop = get_property(db, property_id)
     if not prop:
@@ -449,7 +449,7 @@ def mortgage(
 def list_reviews(
     property_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     reviews = (
         db.query(Review)
@@ -496,7 +496,7 @@ def add_review(
 def get_availability(
     property_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     rows = (
         db.query(Availability)

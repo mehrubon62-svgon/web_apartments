@@ -83,4 +83,20 @@ async function boot() {
   startRouter();
 }
 
-boot();
+boot().catch((err) => {
+  console.error('Nestora boot failed:', err);
+  const main = document.getElementById('main-content') || document.body;
+  main.innerHTML =
+    '<div style="padding:60px;text-align:center;font-family:sans-serif">' +
+    '<h2 style="color:#b23b2e">Ошибка загрузки интерфейса</h2>' +
+    '<pre style="white-space:pre-wrap;color:#666;max-width:700px;margin:16px auto;text-align:left">' +
+    (err && (err.stack || err.message) ? String(err.stack || err.message) : String(err)) +
+    '</pre></div>';
+});
+
+window.addEventListener('error', (e) => {
+  console.error('Global error:', e.message, e.filename, e.lineno);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('Unhandled promise rejection:', e.reason);
+});

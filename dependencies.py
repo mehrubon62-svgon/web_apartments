@@ -72,3 +72,33 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+_optional_api_key = APIKeyHeader(
+    name="Authorization",
+    description="Optional: Bearer <token>. Public endpoints work without it.",
+    auto_error=False,
+)
+
+
+def get_optional_user(
+    authorization: str | None = Depends(_optional_api_key),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Like get_current_user, but returns None for anonymous visitors instead of
+    raising. Lets public endpoints (catalog, map, listing detail) work for guests
+    while still personalizing for logged-in users."""
+    if not authorization:
+        return None
+    try:
+        token = _extract_token(authorization)
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if sub is None:
+            return None
+        user = db.query(User).filter(User.id == int(sub)).first()
+    except (JWTError, ValueError, HTTPException):
+        return None
+    if user is None or user.status == UserStatus.banned:
+        return None
+    return user

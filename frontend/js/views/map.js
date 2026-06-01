@@ -211,8 +211,6 @@ export async function renderMap(_params, query) {
       panelBody.appendChild(h('div', { class: 'muted center', style: { padding: '20px' }, text: e.message }));
     }
   }
-    }
-  }
 
   async function loadPOIs() {
     clearPOIs();
