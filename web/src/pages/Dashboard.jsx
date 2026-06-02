@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
 import { useToast } from '../lib/toast.jsx';
+import { useI18n } from '../lib/i18n.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { Spinner, Empty, Modal } from '../components/Common.jsx';
 import { money, mediaUrl, TYPE_LABELS, DEAL_LABELS, STATUS_LABELS } from '../lib/format.js';
@@ -174,7 +175,14 @@ function TourEditor({ p, onClose }) {
   async function save() {
     if (!rooms.length) return toast('Добавьте хотя бы одну комнату', 'err');
     for (const r of rooms) if (!r.id || !r.media_url) return toast('У каждой комнаты должны быть ID и панорама', 'err');
-    try { await api.upsertTour(p.id, { rooms, first_room_id: first || rooms[0].id }); toast('Тур сохранён', 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); }
+    // Strip UI-only fields (e.g. _placed) before sending to the API.
+    const clean = rooms.map((r) => ({
+      ...r,
+      links: (r.links || [])
+        .filter((l) => l.to_room_id)
+        .map((l) => ({ to_room_id: l.to_room_id, yaw: l.yaw ?? 0, pitch: l.pitch ?? -10, target_yaw: l.target_yaw ?? null, label: l.label || null })),
+    }));
+    try { await api.upsertTour(p.id, { rooms: clean, first_room_id: first || rooms[0].id }); toast('Тур сохранён', 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); }
   }
 
   return (
@@ -207,23 +215,87 @@ function TourEditor({ p, onClose }) {
   );
 }
 function RoomLinks({ room, rooms, onChange }) {
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
   const links = room.links || [];
+  const [placing, setPlacing] = useState(null); // index of the link being placed
   const upd = (i, patch) => onChange(links.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const others = rooms.filter((x) => x.id !== room.id);
   return (
     <div style={{ marginTop: 8 }}>
-      <label className="muted" style={{ fontSize: 12, fontWeight: 700 }}>Переходы (стрелки в др. комнаты)</label>
-      {links.map((l, i) => (
-        <div key={i} className="row" style={{ gap: 6, marginBottom: 6 }}>
-          <span>→</span>
-          <select className="select" style={{ flex: 1 }} value={l.to_room_id || ''} onChange={(e) => upd(i, { to_room_id: e.target.value })}>
-            <option value="">—</option>{rooms.filter((x) => x.id !== room.id).map((x) => <option key={x.id} value={x.id}>{x.name || x.id}</option>)}
-          </select>
-          <input className="input" style={{ width: 90 }} type="number" value={l.yaw ?? 0} onChange={(e) => upd(i, { yaw: Number(e.target.value) })} placeholder="yaw" />
-          <input className="input" style={{ width: 120 }} value={l.label || ''} onChange={(e) => upd(i, { label: e.target.value })} placeholder="метка" />
-          <button className="btn btn-danger-soft btn-sm" onClick={() => onChange(links.filter((_, j) => j !== i))}><Icon name="close" /></button>
+      <label className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{L('Переходы (стрелки в другие комнаты)', 'Transitions (arrows to other rooms)')}</label>
+      {links.map((l, i) => {
+        const placed = l.yaw != null && l._placed;
+        const destName = others.find((x) => x.id === l.to_room_id);
+        return (
+          <div key={i} className="row" style={{ gap: 6, marginBottom: 6 }}>
+            <span>→</span>
+            <select className="select" style={{ flex: 1 }} value={l.to_room_id || ''} onChange={(e) => upd(i, { to_room_id: e.target.value })}>
+              <option value="">—</option>{others.map((x) => <option key={x.id} value={x.id}>{x.name || x.id}</option>)}
+            </select>
+            <button className={`btn btn-sm ${placed ? 'btn-soft' : 'btn-primary'}`} disabled={!room.media_url || !l.to_room_id}
+              onClick={() => setPlacing(i)} title={L('Указать направление на панораме', 'Point the direction on the panorama')}>
+              <Icon name="pin" /> {placed ? L('Указано', 'Set') : L('Указать на туре', 'Point on tour')}
+            </button>
+            <button className="btn btn-danger-soft btn-sm" onClick={() => onChange(links.filter((_, j) => j !== i))}><Icon name="close" /></button>
+          </div>
+        );
+      })}
+      <button className="btn btn-ghost btn-sm" onClick={() => onChange([...links, { to_room_id: '', yaw: 0, pitch: -10 }])}><Icon name="plus" /> {L('переход', 'transition')}</button>
+
+      {placing != null && (
+        <PlaceArrow
+          panorama={room.media_url}
+          initial={{ yaw: links[placing].yaw ?? 0, pitch: links[placing].pitch ?? -10 }}
+          destName={(others.find((x) => x.id === links[placing].to_room_id) || {}).name || links[placing].to_room_id}
+          onClose={() => setPlacing(null)}
+          onPick={({ yaw, pitch, target_yaw }) => { upd(placing, { yaw, pitch, target_yaw, _placed: true }); setPlacing(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Visual arrow placement: shows the panorama; the seller looks toward the
+// doorway and clicks "Place here". We capture yaw/pitch from the live camera —
+// no manual degrees. target_yaw defaults to looking back where they came from.
+function PlaceArrow({ panorama, initial, destName, onClose, onPick }) {
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  const ref = useRef(null);
+  const viewer = useRef(null);
+  useEffect(() => {
+    if (!window.pannellum || !ref.current) return;
+    viewer.current = window.pannellum.viewer(ref.current, {
+      type: 'equirectangular', panorama, autoLoad: true,
+      yaw: initial.yaw || 0, pitch: initial.pitch || -10, hfov: 100, showControls: false,
+    });
+    return () => { try { viewer.current.destroy(); } catch {} };
+  }, [panorama]);
+  function place() {
+    const v = viewer.current;
+    const yaw = v && v.getYaw ? Math.round(v.getYaw()) : (initial.yaw || 0);
+    const pitch = v && v.getPitch ? Math.round(v.getPitch()) : -10;
+    // arriving in the next room, face roughly back toward this doorway
+    const target_yaw = ((yaw + 180 + 180) % 360) - 180;
+    onPick({ yaw, pitch, target_yaw });
+  }
+  return (
+    <div className="place-arrow-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="place-arrow-box">
+        <div className="place-arrow-head">
+          <strong>{L('Куда ведёт стрелка', 'Where the arrow leads')}: {destName}</strong>
+          <button className="icon-btn" onClick={onClose}><Icon name="close" /></button>
         </div>
-      ))}
-      <button className="btn btn-ghost btn-sm" onClick={() => onChange([...links, { to_room_id: '', yaw: 0, label: 'Перейти' }])}><Icon name="plus" /> переход</button>
+        <div className="place-arrow-stage">
+          <div ref={ref} className="place-arrow-pano" />
+          <div className="place-arrow-reticle" aria-hidden="true"><Icon name="plus" size={34} /></div>
+        </div>
+        <div className="place-arrow-foot">
+          <span className="muted">{L('Поверните вид на дверной проём в эту комнату и нажмите кнопку.', 'Turn the view to the doorway into this room, then click the button.')}</span>
+          <button className="btn btn-primary" onClick={place}><Icon name="pin" /> {L('Поставить стрелку здесь', 'Place the arrow here')}</button>
+        </div>
+      </div>
     </div>
   );
 }
