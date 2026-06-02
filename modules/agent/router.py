@@ -28,6 +28,7 @@ MAX_TOOL_ROUNDS = 5
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: int | None = None
+    lang: str = "en"
 
 
 class ChatResponse(BaseModel):
@@ -79,7 +80,8 @@ def agent_chat(
 
     # Rebuild the working transcript: system + stored history + new user turn.
     history = list(convo.messages or [])
-    working: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    lang_instr = " Always reply to the user in Russian." if data.lang == "ru" else " Always reply to the user in English."
+    working: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT + lang_instr}]
     working.extend(history)
     working.append({"role": "user", "content": data.message})
 

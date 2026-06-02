@@ -21,8 +21,28 @@ VALID_VERDICTS = {
 }
 VALID_RISK = {"low", "medium", "high", "unknown"}
 
+# Small in-process cache so re-opening the AI tab doesn't re-call the LLM.
+# Keyed by (property_id, price, lang); invalidated when the price changes.
+_REVIEW_CACHE: dict[tuple, tuple[float, dict]] = {}
+_REVIEW_TTL = 1800.0  # 30 min
 
-def review_property(db: Session, prop: Property) -> dict:
+
+def review_property(db: Session, prop: Property, lang: str = "en") -> dict:
+    import time
+    key = (prop.id, round(prop.price, 2), lang)
+    cached = _REVIEW_CACHE.get(key)
+    if cached and (time.time() - cached[0]) < _REVIEW_TTL:
+        return cached[1]
+    result = _compute_review(db, prop, lang)
+    # Only cache successful AI results (keep retrying heuristic fallbacks cheaply).
+    if result.get("ai_used"):
+        _REVIEW_CACHE[key] = (time.time(), result)
+        if len(_REVIEW_CACHE) > 500:
+            _REVIEW_CACHE.clear()
+    return result
+
+
+def _compute_review(db: Session, prop: Property, lang: str = "en") -> dict:
     stats = market_stats(db, prop)
     base = heuristic_review(prop, stats)
 
@@ -45,20 +65,25 @@ def review_property(db: Session, prop: Property) -> dict:
         "has_location": bool(prop.lat and prop.lng),
     }
 
+    lang_name = "Russian" if lang == "ru" else "English"
     prompt = (
-        "You are a real-estate analyst. Review ONE listing for value and fraud risk, "
-        "using the market stats provided. A price far below comparable listings is a "
-        "strong scam signal; a price well above market means overpriced.\n"
-        "Reply with STRICT JSON only:\n"
-        '{"verdict":"great_deal|fair|overpriced|suspicious|likely_scam|insufficient_data",'
+        "Real-estate analyst. Judge ONE listing using the market stats. "
+        "Far below comparables = scam signal; well above = overpriced.\n"
+        f"Write summary/pros/cons/red_flags in {lang_name}. Be terse: summary <=12 words, "
+        "<=2 items per list, each <=6 words.\n"
+        'JSON only: {"verdict":"great_deal|fair|overpriced|suspicious|likely_scam|insufficient_data",'
         '"deal_score":0-100,"scam_risk":"low|medium|high|unknown",'
-        '"summary":"1-2 sentences","pros":["..."],"cons":["..."],"red_flags":["..."]}\n\n'
+        '"summary":"","pros":[],"cons":[],"red_flags":[]}\n'
         f"Listing: {json.dumps(listing, ensure_ascii=False)}\n"
         f"Market: {json.dumps(stats, ensure_ascii=False)}"
     )
 
     try:
-        raw = chat([{"role": "user", "content": prompt}], temperature=0.2, model=AI_RECOMMEND_MODEL)
+        # Tight token budget + low temp + short timeout => fast first response.
+        raw = chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.1, model=AI_RECOMMEND_MODEL, max_tokens=260, timeout=20.0,
+        )
         parsed = _parse(raw)
     except AIError:
         parsed = None

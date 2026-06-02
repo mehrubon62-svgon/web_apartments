@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from models import get_db, User, EmailCodePurpose
 from config import GOOGLE_CLIENT_ID, REQUIRE_EMAIL_VERIFICATION, EMAIL_CODE_TTL_MIN
-from dependencies import get_current_user, create_access_token
+from dependencies import get_current_user, get_optional_user, create_access_token
 from modules.users.schemas import (
     UserRegister,
     UserLogin,
@@ -330,3 +330,118 @@ def delete_me(
     db.delete(user)
     db.commit()
     return {"detail": "Account deleted"}
+
+
+# ---- Public seller profile ----
+
+@users_router.get("/{user_id}/public")
+def public_profile(user_id: int, db: Session = Depends(get_db)):
+    """Public profile of any user (used for seller pages).
+
+    Returns basic profile info plus aggregate stats for sellers: number of active
+    listings and the average rating across all of their listings' reviews.
+    """
+    from models import Property, PropertyStatus, Review, RoleEnum
+    from sqlalchemy import func
+
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    listings_count = (
+        db.query(Property)
+        .filter(Property.seller_id == user_id, Property.status == PropertyStatus.active)
+        .count()
+    )
+
+    # Average rating across reviews on this seller's properties.
+    avg_rating = (
+        db.query(func.avg(Review.rating))
+        .join(Property, Property.id == Review.property_id)
+        .filter(Property.seller_id == user_id)
+        .scalar()
+    )
+    reviews_count = (
+        db.query(func.count(Review.id))
+        .join(Property, Property.id == Review.property_id)
+        .filter(Property.seller_id == user_id)
+        .scalar()
+    )
+
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "avatar_url": user.avatar_url,
+        "role": user.role.value,
+        "company_name": user.company_name,
+        "phone": user.phone if user.role in (RoleEnum.seller, RoleEnum.admin) else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "is_email_verified": user.is_email_verified,
+        "listings_count": listings_count,
+        "avg_rating": round(float(avg_rating), 2) if avg_rating else None,
+        "reviews_count": int(reviews_count or 0),
+    }
+
+
+@users_router.get("/{user_id}/listings")
+def seller_listings(
+    user_id: int,
+    deal_type: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: "User | None" = Depends(get_optional_user),
+):
+    """Active listings of a seller, optionally filtered by deal type (rent/sale)."""
+    from models import Property, PropertyStatus, DealType
+    from modules.properties.router import serialize
+
+    q = db.query(Property).filter(
+        Property.seller_id == user_id, Property.status == PropertyStatus.active
+    )
+    if deal_type in ("rent", "sale"):
+        q = q.filter(Property.deal_type == DealType(deal_type))
+    props = q.order_by(Property.created_at.desc()).all()
+    uid = current_user.id if current_user else None
+    return {"items": [serialize(db, p, uid) for p in props], "total": len(props)}
+
+
+@users_router.get("/{user_id}/reviews")
+def seller_reviews(
+    user_id: int,
+    deal_type: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """All reviews across a seller's listings.
+
+    `deal_type=rent` returns only reviews on the seller's rental listings;
+    `deal_type=sale` only on sale listings. Each review includes which property
+    it belongs to so the frontend can show context.
+    """
+    from models import Property, Review, DealType
+    from sqlalchemy.orm import selectinload
+
+    q = (
+        db.query(Review, Property)
+        .join(Property, Property.id == Review.property_id)
+        .options(selectinload(Review.user))
+        .filter(Property.seller_id == user_id)
+    )
+    if deal_type in ("rent", "sale"):
+        q = q.filter(Property.deal_type == DealType(deal_type))
+    rows = q.order_by(Review.created_at.desc()).all()
+
+    out = []
+    for review, prop in rows:
+        out.append({
+            "id": review.id,
+            "rating": review.rating,
+            "text": review.text,
+            "created_at": review.created_at.isoformat() if review.created_at else None,
+            "user": {
+                "id": review.user.id,
+                "full_name": review.user.full_name,
+                "avatar_url": review.user.avatar_url,
+                "role": review.user.role.value,
+            } if review.user else None,
+            "property": {"id": prop.id, "title": prop.title, "deal_type": prop.deal_type.value},
+        })
+    return {"items": out, "total": len(out)}

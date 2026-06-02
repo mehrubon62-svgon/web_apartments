@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
+import { useI18n } from '../lib/i18n.jsx';
 import { useToast } from '../lib/toast.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { Spinner, Empty, Modal, Avatar, Stars } from '../components/Common.jsx';
@@ -12,15 +13,19 @@ export function PropertyPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user } = useApp();
+  const { lang } = useI18n();
   const [p, setP] = useState(undefined);
   const [tab, setTab] = useState('desc');
   const [modal, setModal] = useState(null);
+  const [aiPrefetch, setAiPrefetch] = useState(null);
 
   useEffect(() => {
-    setP(undefined); setTab('desc');
+    setP(undefined); setTab('desc'); setAiPrefetch(null);
     api.getProperty(id).then(setP).catch(() => setP(null));
+    // Warm the AI review in the background so the tab is instant when opened.
+    api.aiReview(id, lang).then(setAiPrefetch).catch(() => {});
     window.scrollTo(0, 0);
-  }, [id]);
+  }, [id, lang]);
 
   if (p === undefined) return <div className="page"><div className="container"><Spinner big /></div></div>;
   if (p === null) return <div className="page"><div className="container"><Empty icon="home" title="Объект не найден" action={<Link className="btn btn-primary mt-16" to="/">В каталог</Link>} /></div></div>;
@@ -60,7 +65,7 @@ export function PropertyPage() {
               <div className="tabs" style={{ marginTop: 22 }}>
                 {tabs.map(([k, l]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>)}
               </div>
-              <TabContent tab={tab} p={p} onChanged={() => api.getProperty(id).then(setP)} />
+              <TabContent tab={tab} p={p} aiPrefetch={aiPrefetch} onChanged={() => api.getProperty(id).then(setP)} />
             </div>
           </div>
           <Sidebar p={p} isOwner={isOwner} user={user} setModal={setModal} />
@@ -89,14 +94,14 @@ function Gallery({ p, photos }) {
   );
 }
 
-function TabContent({ tab, p, onChanged }) {
+function TabContent({ tab, p, aiPrefetch, onChanged }) {
   if (tab === 'desc') return (
     <div className="card card-pad">
       <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{p.description || 'Описание отсутствует.'}</p>
       {p.house_rules && <div className="mt-16"><h3 style={{ fontSize: 16, marginBottom: 8 }}>Правила дома</h3><p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{p.house_rules}</p></div>}
     </div>
   );
-  if (tab === 'ai') return <AiReview id={p.id} />;
+  if (tab === 'ai') return <AiReview id={p.id} prefetch={aiPrefetch} />;
   if (tab === 'price') return <PriceHistory id={p.id} />;
   if (tab === 'mortgage') return <Mortgage p={p} />;
   if (tab === 'reviews') return <Reviews p={p} onChanged={onChanged} />;
@@ -105,39 +110,45 @@ function TabContent({ tab, p, onChanged }) {
   return null;
 }
 
-function AiReview({ id }) {
-  const [r, setR] = useState(undefined);
-  useEffect(() => { setR(undefined); api.aiReview(id).then(setR).catch(() => setR(null)); }, [id]);
+function AiReview({ id, prefetch }) {
+  const { lang, t } = useI18n();
+  const [r, setR] = useState(prefetch || undefined);
+  useEffect(() => {
+    if (prefetch) { setR(prefetch); return; }
+    setR(undefined);
+    api.aiReview(id, lang).then(setR).catch(() => setR(null));
+  }, [id, lang, prefetch]);
   if (r === undefined) return <Spinner />;
-  if (!r) return <div className="card card-pad muted">Не удалось получить оценку.</div>;
+  if (!r) return <div className="card card-pad muted">{t('Не удалось получить оценку.') || 'Не удалось получить оценку.'}</div>;
   const v = VERDICT[r.verdict] || VERDICT.insufficient_data;
+  const riskLabel = { low: 'низкий', medium: 'средний', high: 'высокий', unknown: 'неизвестно' }[r.scam_risk] || r.scam_risk;
   const m = r.market || {};
   const facts = [];
-  if (m.market_median_price != null) facts.push(['Медиана рынка', money(m.market_median_price)]);
-  if (m.market_avg_price != null) facts.push(['Средняя по рынку', money(m.market_avg_price)]);
-  if (m.this_price_per_sqm != null) facts.push(['Цена за м²', money(m.this_price_per_sqm)]);
-  if (m.comparables_count != null) facts.push(['Похожих объектов', m.comparables_count]);
+  if (m.market_median_price != null) facts.push([t('Медиана рынка'), money(m.market_median_price)]);
+  if (m.market_avg_price != null) facts.push([t('Средняя по рынку'), money(m.market_avg_price)]);
+  if (m.this_price_per_sqm != null) facts.push([t('Цена за м²'), money(m.this_price_per_sqm)]);
+  if (m.comparables_count != null) facts.push([t('Похожих объектов'), m.comparables_count]);
   return (
     <div className="ai-review">
       <div className="deal-score">
         <div className="score-ring" style={{ background: `conic-gradient(${v.color} ${r.deal_score}%, var(--line) 0)` }}><span>{r.deal_score}</span></div>
         <div>
-          <div className="verdict-pill" style={{ background: v.color + '22', color: v.color }}>{v.label}</div>
+          <div className="verdict-pill" style={{ background: v.color + '22', color: v.color }}>{t(v.label)}</div>
           <p style={{ marginTop: 8, fontWeight: 600 }}>{r.summary}</p>
           <div className="row wrap mt-8" style={{ gap: 8 }}>
-            <span className="tag tag-muted">Риск скама: {({ low: 'низкий', medium: 'средний', high: 'высокий', unknown: 'неизвестно' }[r.scam_risk]) || r.scam_risk}</span>
-            <span className={`tag ${r.ai_used ? 'tag-ok' : 'tag-muted'}`}>{r.ai_used ? 'Оценка ИИ' : 'Эвристика'}</span>
+            <span className="tag tag-muted">{t('Риск скама')}: {t(riskLabel)}</span>
+            <span className={`tag ${r.ai_used ? 'tag-ok' : 'tag-muted'}`}>{r.ai_used ? t('Оценка ИИ') : t('Эвристика')}</span>
           </div>
         </div>
       </div>
       <div className="grid mt-16" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))' }}>
-        {r.pros?.length > 0 && <ListBox title="Плюсы" items={r.pros} color="var(--ok)" />}
-        {r.cons?.length > 0 && <ListBox title="Минусы" items={r.cons} color="var(--warn)" />}
-        {r.red_flags?.length > 0 && <ListBox title="Красные флаги" items={r.red_flags} color="var(--danger)" />}
+        {r.pros?.length > 0 && <ListBox title={t('Плюсы')} items={r.pros} color="var(--ok)" />}
+        {r.cons?.length > 0 && <ListBox title={t('Минусы')} items={r.cons} color="var(--warn)" />}
+        {r.red_flags?.length > 0 && <ListBox title={t('Красные флаги')} items={r.red_flags} color="var(--danger)" />}
       </div>
       {facts.length > 0 && (
         <div className="card card-pad mt-16">
-          <h3 style={{ fontSize: 15, marginBottom: 10 }}>Рыночный контекст</h3>
+          <h3 style={{ fontSize: 15, marginBottom: 10 }}>{t('Рыночный контекст')}</h3>
           {facts.map(([k, val]) => <div key={k} className="fact-row"><span className="k">{k}</span><span className="v">{String(val)}</span></div>)}
         </div>
       )}
@@ -211,16 +222,22 @@ function MiniStat({ label, value }) { return <div className="stat"><div classNam
 
 function Reviews({ p, onChanged }) {
   const { user } = useApp();
-  const toast = useToast();
   const [list, setList] = useState(undefined);
   const [open, setOpen] = useState(false);
-  const reload = () => api.reviews(p.id).then(setList).catch(() => setList([]));
+  // Reviews scoped to the seller, filtered by this listing's deal type:
+  // rentals show rental reviews, sales show this seller's sale reviews.
+  const reload = () => api.sellerReviews(p.seller.id, { deal_type: p.deal_type })
+    .then((d) => setList(d.items)).catch(() => setList([]));
   useEffect(() => { setList(undefined); reload(); }, [p.id]);
   if (list === undefined) return <Spinner />;
+  const scope = p.deal_type === 'rent' ? 'по арендам этого продавца' : 'по объектам этого продавца';
   return (
     <div>
       <div className="row-between mb-16">
-        <h3 style={{ fontSize: 17 }}>Отзывы ({list.length})</h3>
+        <div>
+          <h3 style={{ fontSize: 17 }}>Отзывы ({list.length})</h3>
+          <div className="muted" style={{ fontSize: 13 }}>{scope}</div>
+        </div>
         {user && <button className="btn btn-soft" onClick={() => setOpen(true)}><Icon name="edit" /> Оставить отзыв</button>}
       </div>
       {!list.length ? <div className="card card-pad muted center">Отзывов пока нет. Будьте первым!</div> : list.map((r) => (
@@ -228,10 +245,13 @@ function Reviews({ p, onChanged }) {
           <div className="row" style={{ gap: 12, marginBottom: 8 }}>
             <Avatar user={r.user} size={40} />
             <div>
-              <div style={{ fontWeight: 700 }}>{r.user.full_name || 'Пользователь'}</div>
+              <div style={{ fontWeight: 700 }}>{r.user?.full_name || 'Пользователь'}</div>
               <Stars rating={r.rating} />
             </div>
-            <div style={{ marginLeft: 'auto' }} className="muted">{fmtDate(r.created_at)}</div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <div className="muted">{fmtDate(r.created_at)}</div>
+              {r.property && r.property.id !== p.id && <Link className="muted" style={{ fontSize: 12 }} to={`/properties/${r.property.id}`}>{r.property.title}</Link>}
+            </div>
           </div>
           {r.text && <p style={{ margin: 0 }}>{r.text}</p>}
         </div>
@@ -318,13 +338,14 @@ function Sidebar({ p, isOwner, user, setModal }) {
 
       {p.seller && (
         <div className="card card-pad">
-          <div className="seller-box">
+          <Link className="seller-box" to={`/sellers/${p.seller.id}`} style={{ cursor: 'pointer' }}>
             <Avatar user={p.seller} size={48} />
             <div>
               <div style={{ fontWeight: 700 }}>{p.seller.full_name || 'Продавец'}</div>
               <div className="muted" style={{ fontSize: 13 }}>{p.seller.company_name || ROLE_LABELS[p.seller.role]}</div>
             </div>
-          </div>
+            <Icon name="arrow-right" className="" />
+          </Link>
         </div>
       )}
 

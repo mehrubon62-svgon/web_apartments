@@ -339,6 +339,7 @@ def remove(
 @router.get("/{property_id}/ai-review", response_model=AIReviewResult)
 def ai_review(
     property_id: int,
+    lang: str = Query("en", description="Response language: ru | en"),
     db: Session = Depends(get_db),
     current_user: User = Depends(rate_limit("ai_review")),
 ):
@@ -353,7 +354,7 @@ def ai_review(
     prop = get_property(db, property_id)
     if not prop or prop.status == PropertyStatus.deleted:
         raise HTTPException(status_code=404, detail="Property not found")
-    result = review_property(db, prop)
+    result = review_property(db, prop, lang="ru" if lang == "ru" else "en")
     return AIReviewResult(**result)
 
 

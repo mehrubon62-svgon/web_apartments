@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
+import { useI18n } from '../lib/i18n.jsx';
 import { Icon } from '../lib/icons.jsx';
 
 const TOOL_LABELS = {
@@ -15,6 +16,7 @@ const SUGGESTIONS = ['Найди квартиру в аренду до $300 за
 export function AgentPage() {
   const nav = useNavigate();
   const { user } = useApp();
+  const { lang } = useI18n();
   const [messages, setMessages] = useState([{ role: 'bot', text: 'Привет! Я ИИ-агент Nestora. Могу найти объекты, сравнить их, добавить в избранное, поставить трекер цены или дать совет. С чего начнём?' }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,7 @@ export function AgentPage() {
     if (!api.config.aiEnabled) { setMessages((m) => [...m, { role: 'bot', text: '⚠️ ИИ не настроен на сервере (нет AI_API_KEY).' }]); return; }
     setInput(''); setMessages((m) => [...m, { role: 'user', text: msg }]); setBusy(true);
     try {
-      const res = await api.agentChat({ message: msg, conversation_id: convoId.current });
+      const res = await api.agentChat({ message: msg, conversation_id: convoId.current, lang });
       convoId.current = res.conversation_id;
       setMessages((m) => [...m, { role: 'bot', text: res.reply || '(пустой ответ)', tools: res.tool_calls }]);
     } catch (e) { setMessages((m) => [...m, { role: 'bot', text: '⚠️ ' + e.message }]); }

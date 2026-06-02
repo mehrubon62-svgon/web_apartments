@@ -87,15 +87,16 @@ def _post(payload: dict[str, Any], timeout: float = 60.0) -> dict[str, Any]:
     raise AIError(f"All AI models failed. Last error: {last_err}")
 
 
-def chat(messages: list[dict[str, Any]], temperature: float = 0.4, model: str | None = None) -> str:
+def chat(messages: list[dict[str, Any]], temperature: float = 0.4, model: str | None = None, max_tokens: int | None = None, timeout: float = 60.0) -> str:
     """Plain text completion. Pass `model` to override the default (same OpenRouter key)."""
     data = _post(
         {
             "model": model or AI_MODEL,
             "messages": messages,
-            "max_tokens": AI_MAX_TOKENS,
+            "max_tokens": max_tokens or AI_MAX_TOKENS,
             "temperature": temperature,
-        }
+        },
+        timeout=timeout,
     )
     return _first_text(data)
 
