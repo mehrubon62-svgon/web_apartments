@@ -33,6 +33,7 @@ export function Layout() {
     ['/', t('Каталог'), true],
     ['/map', t('Карта')],
     ['/recommendations', t('Подбор')],
+    ['/about', t('О нас')],
     user && ['/favorites', t('Избранное')],
     user && ['/messages', t('Сообщения')],
     isSeller && ['/dashboard', t('Кабинет')],
@@ -200,7 +201,7 @@ function Footer() {
           </div>
         </div>
         {col('Продукт', [['Каталог', '/'], ['Карта', '/map'], ['ИИ-агент', '/agent'], ['Подбор', '/recommendations']])}
-        {col('Компания', [['О проекте', '/'], ['Документация API', '/docs', true]])}
+        {col('Компания', [['О нас', '/about'], ['О проекте', '/about'], ['Документация API', '/docs', true]])}
         {col('Поддержка', [['Связаться', '/messages'], ['Профиль', '/profile']])}
       </div>
       <div className="footer-bottom">

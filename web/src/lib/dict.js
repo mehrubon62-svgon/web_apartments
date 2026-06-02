@@ -10,6 +10,7 @@ export const EN = {
   'Без имени': 'No name',
   // footer
   'Продукт': 'Product', 'Компания': 'Company', 'Поддержка': 'Support', 'О проекте': 'About',
+  'О нас': 'About us',
   'Документация API': 'API docs', 'Связаться': 'Contact', 'Все права защищены': 'All rights reserved',
   'Иммерсивный AI-маркетплейс недвижимости': 'Immersive AI real estate marketplace',
   // catalog / home

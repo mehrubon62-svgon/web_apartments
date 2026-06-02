@@ -25,8 +25,13 @@ SYSTEM_PROMPT = (
     "property search. Do not answer off-topic questions.\n"
     "2. Use the tools for every factual claim about listings, favorites, history or trackers. "
     "Never invent properties, prices, ids or features — if a tool returns nothing, say so.\n"
-    "3. After tool results, give a clear, structured answer: lead with the direct answer, then "
-    "key specifics (price, area, rooms, location, deal type). Reference listings by their id.\n"
+    "3. After tool results, give a clear, structured answer. CRITICAL: when a search/favorites/"
+    "recommendations/history/compare tool returns listings, the UI renders them as clickable "
+    "cards directly below your message. Your text MUST then be ONLY a brief confirmation line "
+    "(e.g. 'Yes — here are houses under $800k, tap a card to open one.'). You MUST NOT describe "
+    "the listings in text: no titles, no prices, no area/rooms, no addresses, no numbered or "
+    "bulleted lists of properties, and never embed image markdown. The cards already show every "
+    "detail. If a tool returns nothing, say so plainly.\n"
     "4. Be substantive but tight — no filler, no repetition, no hedging. Prefer short paragraphs "
     "or compact bullet lists. Aim for 2-6 sentences unless the user asks for more detail.\n"
     "5. When the user's request is ambiguous, make a reasonable assumption and proceed, noting "
@@ -36,7 +41,13 @@ SYSTEM_PROMPT = (
     "7. NEVER invent a price filter. For 'cheapest', 'most affordable', 'budget' requests, call "
     "search_properties with sort_by='price', order='asc' and NO max_price. For 'most expensive', "
     "'premium', 'biggest', use order='desc' (and sort_by='area' for size). Only pass min_price/"
-    "max_price when the user states an explicit number."
+    "max_price when the user states an explicit number.\n"
+    "8. Pick the EXACT tool for the action and never substitute. To save/like → add_to_favorites. "
+    "To remove/unsave/unlike ONE listing → remove_from_favorites (NEVER add_to_favorites). To "
+    "empty the whole favorites list → clear_favorites. To start price tracking → set_price_tracker; "
+    "to stop it → remove_price_tracker. Only call delete_viewing_history when the user explicitly "
+    "asks to clear their VIEWING HISTORY — never as a side effect of a favorites or tracker "
+    "request. Call only the single tool the user asked for; do not chain unrelated tools."
 )
 
 MAX_TOOL_ROUNDS = 5
@@ -69,10 +80,28 @@ def _build_ui_results(tool_results: list[dict]) -> list[dict]:
                 "label_en": "Added to favorites", "label_ru": "Добавлено в избранное",
                 "property": res.get("property"),
             })
+        elif tool == "remove_from_favorites" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "heart-outline", "status": "ok",
+                "label_en": "Removed from favorites", "label_ru": "Удалено из избранного",
+                "property": res.get("property"),
+            })
+        elif tool == "clear_favorites" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "trash", "status": "ok",
+                "label_en": f"Favorites cleared ({res.get('deleted', 0)})",
+                "label_ru": f"Избранное очищено ({res.get('deleted', 0)})",
+            })
         elif tool == "set_price_tracker" and res.get("ok"):
             blocks.append({
                 "kind": "action", "icon": "trending-down", "status": "ok",
                 "label_en": "Price tracking on", "label_ru": "Отслеживание цены включено",
+                "property": res.get("property"),
+            })
+        elif tool == "remove_price_tracker" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "trending-down", "status": "ok",
+                "label_en": "Price tracking off", "label_ru": "Отслеживание цены выключено",
                 "property": res.get("property"),
             })
         elif tool == "delete_viewing_history" and res.get("ok"):

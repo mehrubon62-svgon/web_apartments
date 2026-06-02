@@ -18,7 +18,7 @@ from models import (
     PriceTracker,
 )
 from modules.properties.crud import search_properties, get_property, cover_url, has_tour
-from modules.favorites.crud import add_favorite, list_favorites
+from modules.favorites.crud import add_favorite, remove_favorite, clear_favorites, list_favorites
 from modules.history.crud import list_history, clear_history
 from modules.recommendations.crud import load_recommended_properties
 
@@ -107,12 +107,36 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "add_to_favorites",
-            "description": "Add a property to the current user's favorites.",
+            "description": "Add a property to the current user's favorites (save/like it).",
             "parameters": {
                 "type": "object",
                 "properties": {"property_id": {"type": "integer"}},
                 "required": ["property_id"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_from_favorites",
+            "description": (
+                "Remove ONE property from the user's favorites (unsave/unlike). Use this when the "
+                "user asks to remove/delete/unfavorite a specific listing. Do NOT call "
+                "add_to_favorites for removal requests."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"property_id": {"type": "integer"}},
+                "required": ["property_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_favorites",
+            "description": "Remove ALL properties from the user's favorites at once. Only use when the user clearly asks to clear/empty their entire favorites list.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
@@ -142,6 +166,18 @@ TOOLS: list[dict[str, Any]] = [
                     "property_id": {"type": "integer"},
                     "target_price": {"type": "number"},
                 },
+                "required": ["property_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_price_tracker",
+            "description": "Stop tracking the price of a property. Use when the user asks to stop/remove price tracking for a listing.",
+            "parameters": {
+                "type": "object",
+                "properties": {"property_id": {"type": "integer"}},
                 "required": ["property_id"],
             },
         },
@@ -268,6 +304,23 @@ def _t_add_favorite(db, user_id, args):
     return {"ok": True, "action": "added_favorite", "property_id": pid, "property": _serialize_card(db, prop)}
 
 
+def _t_remove_favorite(db, user_id, args):
+    pid = int(args["property_id"])
+    prop = get_property(db, pid)
+    if not prop:
+        return {"error": "Property not found"}
+    removed = remove_favorite(db, user_id, pid)
+    if not removed:
+        return {"ok": False, "action": "remove_favorite", "property_id": pid,
+                "message": "That property was not in favorites."}
+    return {"ok": True, "action": "removed_favorite", "property_id": pid, "property": _serialize_card(db, prop)}
+
+
+def _t_clear_favorites(db, user_id, args):
+    count = clear_favorites(db, user_id)
+    return {"ok": True, "action": "cleared_favorites", "deleted": count}
+
+
 def _t_get_history(db, user_id, args):
     rows, total, props_map = list_history(db, user_id, limit=20)
     out = []
@@ -311,6 +364,23 @@ def _t_set_tracker(db, user_id, args):
     return {"ok": True, "action": "price_tracker_set", "property_id": pid, "target_price": args.get("target_price"), "property": _serialize_card(db, prop)}
 
 
+def _t_remove_tracker(db, user_id, args):
+    pid = int(args["property_id"])
+    prop = get_property(db, pid)
+    tracker = (
+        db.query(PriceTracker)
+        .filter(PriceTracker.user_id == user_id, PriceTracker.property_id == pid)
+        .first()
+    )
+    if not tracker:
+        return {"ok": False, "action": "remove_tracker", "property_id": pid,
+                "message": "No price tracker was set for that property."}
+    db.delete(tracker)
+    db.commit()
+    return {"ok": True, "action": "price_tracker_removed", "property_id": pid,
+            "property": _serialize_card(db, prop) if prop else None}
+
+
 def _t_get_recommendations(db, user_id, args):
     props = load_recommended_properties(db, user_id, limit=5)
     return {"recommendations": [_serialize_card(db, p) for p in props]}
@@ -323,8 +393,11 @@ _HANDLERS: dict[str, Callable] = {
     "compare_properties": _t_compare,
     "get_favorites": _t_get_favorites,
     "add_to_favorites": _t_add_favorite,
+    "remove_from_favorites": _t_remove_favorite,
+    "clear_favorites": _t_clear_favorites,
     "get_viewing_history": _t_get_history,
     "delete_viewing_history": _t_delete_history,
     "set_price_tracker": _t_set_tracker,
+    "remove_price_tracker": _t_remove_tracker,
     "get_recommendations": _t_get_recommendations,
 }
