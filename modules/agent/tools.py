@@ -219,7 +219,7 @@ def _t_search(db, user_id, args):
         order=args.get("order"),
         limit=min(int(args.get("limit", 5)), 20),
     )
-    return {"total": total, "results": [_serialize_brief(p) for p in items]}
+    return {"total": total, "results": [_serialize_card(db, p) for p in items]}
 
 
 def _t_open_tour(db, user_id, args):
@@ -228,7 +228,11 @@ def _t_open_tour(db, user_id, args):
     prop = get_property(db, pid)
     if not prop:
         return {"error": "Property not found"}
-    return {"property_id": pid, "tour_url": f"{AI_APP_URL.rstrip('/')}/properties/{pid}/tour"}
+    return {
+        "property_id": pid,
+        "tour_url": f"{AI_APP_URL.rstrip('/')}/properties/{pid}/tour",
+        "property": _serialize_card(db, prop),
+    }
 
 
 def _t_show_on_map(db, user_id, args):
@@ -247,12 +251,12 @@ def _t_compare(db, user_id, args):
     props = [p for p in props if p and p.status != PropertyStatus.deleted]
     if len(props) < 2:
         return {"error": "Need at least two valid properties to compare"}
-    return {"properties": [_serialize_brief(p) for p in props]}
+    return {"properties": [_serialize_card(db, p) for p in props]}
 
 
 def _t_get_favorites(db, user_id, args):
     props = list_favorites(db, user_id)
-    return {"favorites": [_serialize_brief(p) for p in props]}
+    return {"favorites": [_serialize_card(db, p) for p in props]}
 
 
 def _t_add_favorite(db, user_id, args):
@@ -261,7 +265,7 @@ def _t_add_favorite(db, user_id, args):
     if not prop:
         return {"error": "Property not found"}
     add_favorite(db, user_id, pid)
-    return {"ok": True, "property_id": pid}
+    return {"ok": True, "action": "added_favorite", "property_id": pid, "property": _serialize_card(db, prop)}
 
 
 def _t_get_history(db, user_id, args):
@@ -270,7 +274,7 @@ def _t_get_history(db, user_id, args):
     for r in rows:
         p = props_map.get(r.property_id)
         if p:
-            entry = _serialize_brief(p)
+            entry = _serialize_card(db, p)
             entry["viewed_at"] = r.viewed_at.isoformat()
             out.append(entry)
     return {"total": total, "history": out}
@@ -278,7 +282,7 @@ def _t_get_history(db, user_id, args):
 
 def _t_delete_history(db, user_id, args):
     count = clear_history(db, user_id)
-    return {"ok": True, "deleted": count}
+    return {"ok": True, "action": "cleared_history", "deleted": count}
 
 
 def _t_set_tracker(db, user_id, args):
@@ -304,12 +308,12 @@ def _t_set_tracker(db, user_id, args):
             )
         )
     db.commit()
-    return {"ok": True, "property_id": pid, "target_price": args.get("target_price")}
+    return {"ok": True, "action": "price_tracker_set", "property_id": pid, "target_price": args.get("target_price"), "property": _serialize_card(db, prop)}
 
 
 def _t_get_recommendations(db, user_id, args):
     props = load_recommended_properties(db, user_id, limit=5)
-    return {"recommendations": [_serialize_brief(p) for p in props]}
+    return {"recommendations": [_serialize_card(db, p) for p in props]}
 
 
 _HANDLERS: dict[str, Callable] = {

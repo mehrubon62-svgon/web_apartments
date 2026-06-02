@@ -42,6 +42,61 @@ SYSTEM_PROMPT = (
 MAX_TOOL_ROUNDS = 5
 
 
+def _build_ui_results(tool_results: list[dict]) -> list[dict]:
+    """Flatten raw tool outputs into UI blocks the chat widget can render
+    (clickable listing cards, action confirmations, links). The text reply
+    still comes from the model; these blocks make actions tangible."""
+    blocks: list[dict] = []
+    for tr in tool_results:
+        tool = tr.get("tool")
+        res = tr.get("result") or {}
+        if not isinstance(res, dict) or res.get("error"):
+            continue
+
+        if tool in ("search_properties",) and res.get("results"):
+            blocks.append({"kind": "listings", "items": res["results"]})
+        elif tool == "get_favorites" and res.get("favorites"):
+            blocks.append({"kind": "listings", "items": res["favorites"]})
+        elif tool == "get_recommendations" and res.get("recommendations"):
+            blocks.append({"kind": "listings", "items": res["recommendations"]})
+        elif tool == "get_viewing_history" and res.get("history"):
+            blocks.append({"kind": "listings", "items": res["history"]})
+        elif tool == "compare_properties" and res.get("properties"):
+            blocks.append({"kind": "listings", "items": res["properties"]})
+        elif tool == "add_to_favorites" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "heart", "status": "ok",
+                "label_en": "Added to favorites", "label_ru": "Добавлено в избранное",
+                "property": res.get("property"),
+            })
+        elif tool == "set_price_tracker" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "trending-down", "status": "ok",
+                "label_en": "Price tracking on", "label_ru": "Отслеживание цены включено",
+                "property": res.get("property"),
+            })
+        elif tool == "delete_viewing_history" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "trash", "status": "ok",
+                "label_en": f"Viewing history cleared ({res.get('deleted', 0)})",
+                "label_ru": f"История просмотров очищена ({res.get('deleted', 0)})",
+            })
+        elif tool == "open_tour" and res.get("tour_url"):
+            prop = res.get("property") or {}
+            blocks.append({
+                "kind": "link", "icon": "globe",
+                "path": f"/properties/{res.get('property_id')}/tour",
+                "label_en": "Open 360° tour", "label_ru": "Открыть 360° тур",
+                "property": prop,
+            })
+        elif tool == "show_on_map" and res.get("map_url"):
+            blocks.append({
+                "kind": "link", "icon": "map", "path": "/map",
+                "label_en": "Show on map", "label_ru": "Показать на карте",
+            })
+    return blocks
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: int | None = None
@@ -52,6 +107,7 @@ class ChatResponse(BaseModel):
     conversation_id: int
     reply: str
     tool_calls: list[str] = []
+    results: list[dict] = []
 
 
 class ConversationOut(BaseModel):
@@ -117,6 +173,7 @@ def agent_chat(
     )})
 
     used_tools: list[str] = []
+    tool_results: list[dict] = []
 
     try:
         for _ in range(MAX_TOOL_ROUNDS):
@@ -136,6 +193,7 @@ def agent_chat(
                 except ValueError:
                     args = {}
                 result = execute_tool(db, current_user.id, name, args)
+                tool_results.append({"tool": name, "result": result})
                 working.append(
                     {
                         "role": "tool",
@@ -170,7 +228,12 @@ def agent_chat(
     db.commit()
     db.refresh(convo)
 
-    return ChatResponse(conversation_id=convo.id, reply=reply, tool_calls=used_tools)
+    return ChatResponse(
+        conversation_id=convo.id,
+        reply=reply,
+        tool_calls=used_tools,
+        results=_build_ui_results(tool_results),
+    )
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
