@@ -325,10 +325,38 @@ export function AgentWidget() {
     setMessages((m) => [...m, { role: 'user', text: msg }]);
     setBusy(true);
 
-    // Append an empty bot bubble we'll fill as tokens stream in.
+    // Append an empty bot bubble. `full` = everything received so far; `text` =
+    // what's currently revealed by the typewriter. A steady timer advances
+    // `text` toward `full` so the answer types out smoothly instead of jumping.
     const botIndex = { current: -1 };
-    setMessages((m) => { botIndex.current = m.length; return [...m, { role: 'bot', text: '', streaming: true }]; });
+    setMessages((m) => { botIndex.current = m.length; return [...m, { role: 'bot', text: '', full: '', streaming: true, results: null }]; });
     const patchBot = (patch) => setMessages((m) => m.map((mm, i) => (i === botIndex.current ? { ...mm, ...(typeof patch === 'function' ? patch(mm) : patch) } : mm)));
+
+    // Typewriter timer: reveal a few chars per tick from full -> text.
+    let streamDone = false;
+    let pendingResults = null;
+    const typer = setInterval(() => {
+      setMessages((m) => {
+        const mm = m[botIndex.current];
+        if (!mm) return m;
+        const full = mm.full || '';
+        const shown = mm.text || '';
+        if (shown.length >= full.length) {
+          // caught up; if the stream finished, stop typing and reveal results
+          if (streamDone) {
+            clearInterval(typer);
+            const next = { ...mm, streaming: false };
+            if (pendingResults) next.results = pendingResults;
+            return m.map((x, i) => (i === botIndex.current ? next : x));
+          }
+          return m;
+        }
+        // reveal ~2-4 chars per tick for a natural pace
+        const step = Math.max(2, Math.ceil((full.length - shown.length) / 22));
+        const nextText = full.slice(0, shown.length + step);
+        return m.map((x, i) => (i === botIndex.current ? { ...x, text: nextText } : x));
+      });
+    }, 18);
 
     try {
       const resp = await fetch(api.agentChatStreamUrl(), {
@@ -346,13 +374,16 @@ export function AgentWidget() {
         let obj; try { obj = JSON.parse(payload); } catch { return; }
         if (obj.type === 'meta') {
           if (obj.conversation_id) { convoId.current = obj.conversation_id; localStorage.setItem(CID_KEY, String(obj.conversation_id)); }
-          patchBot({ tools: obj.tool_calls, results: obj.results });
+          // hold result cards until the text finishes typing, then stagger them in
+          pendingResults = obj.results;
+          patchBot({ tools: obj.tool_calls });
         } else if (obj.type === 'delta') {
-          patchBot((mm) => ({ text: (mm.text || '') + obj.text }));
+          patchBot((mm) => ({ full: (mm.full || '') + obj.text }));
         } else if (obj.type === 'done') {
-          patchBot((mm) => ({ text: obj.reply || mm.text || '…', streaming: false }));
+          patchBot((mm) => ({ full: obj.reply || mm.full || '…' }));
         } else if (obj.type === 'error') {
-          patchBot({ text: '⚠️ ' + (obj.detail || 'error'), streaming: false });
+          streamDone = true; clearInterval(typer);
+          patchBot({ text: '⚠️ ' + (obj.detail || 'error'), full: '⚠️ ' + (obj.detail || 'error'), streaming: false });
         }
       };
 
@@ -368,16 +399,17 @@ export function AgentWidget() {
           if (line) handleEvent(line.slice(6));
         }
       }
-      patchBot((mm) => ({ streaming: false, text: mm.text || '…' }));
+      streamDone = true;
     } catch (e) {
+      streamDone = true; clearInterval(typer);
       // Fall back to the non-streaming endpoint on any streaming failure.
       try {
         const res = await api.agentChat({ message: msg, conversation_id: convoId.current, lang });
         convoId.current = res.conversation_id;
         localStorage.setItem(CID_KEY, String(res.conversation_id));
-        patchBot({ text: res.reply || '…', tools: res.tool_calls, results: res.results, streaming: false });
+        patchBot({ text: res.reply || '…', full: res.reply || '…', tools: res.tool_calls, results: res.results, streaming: false });
       } catch (e2) {
-        patchBot({ text: '⚠️ ' + e2.message, streaming: false });
+        patchBot({ text: '⚠️ ' + e2.message, full: '⚠️ ' + e2.message, streaming: false });
       }
     } finally {
       setBusy(false);

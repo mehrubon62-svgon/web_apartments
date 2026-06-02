@@ -96,57 +96,6 @@ export function HistoryPage() {
   );
 }
 
-const REC_SUGGESTIONS = {
-  ru: [
-    'для семьи с детьми', 'рядом с метро', 'тихий зелёный район', 'с панорамным видом',
-    'для первой покупки', 'под сдачу в аренду', 'современный ремонт', 'просторная и светлая',
-    'недорого, но уютно', 'ближе к центру', 'для пары без детей', 'с балконом',
-    'студия для студента', 'дом с двором', 'инвестиция с ростом цены', 'апартаменты у воды',
-    'для удалённой работы', 'с парковкой', 'рядом со школой', 'премиум-класс',
-  ],
-  en: [
-    'for a family with kids', 'near the metro', 'quiet green area', 'with a panoramic view',
-    'for a first purchase', 'good to rent out', 'modern renovation', 'spacious and bright',
-    'affordable but cosy', 'closer to downtown', 'for a couple', 'with a balcony',
-    'studio for a student', 'house with a yard', 'investment with upside', 'apartments by the water',
-    'good for remote work', 'with parking', 'near a school', 'premium class',
-  ],
-};
-
-const REC_SUGGESTIONS = {
-  ru: [
-    'для семьи с детьми', 'рядом с метро', 'тихий зелёный район', 'с панорамным видом',
-    'для первой покупки', 'под сдачу в аренду', 'современный ремонт', 'просторная и светлая',
-    'недорого, но уютно', 'ближе к центру', 'для пары без детей', 'с балконом',
-    'студия для студента', 'дом с двором', 'инвестиция с ростом цены', 'апартаменты у воды',
-    'для удалённой работы', 'с парковкой', 'рядом со школой', 'премиум-класс',
-  ],
-  en: [
-    'for a family with kids', 'near the metro', 'quiet green area', 'with a panoramic view',
-    'for a first purchase', 'good to rent out', 'modern renovation', 'spacious and bright',
-    'affordable but cosy', 'closer to downtown', 'for a couple', 'with a balcony',
-    'studio for a student', 'house with a yard', 'investment with upside', 'apartments by the water',
-    'good for remote work', 'with parking', 'near a school', 'premium class',
-  ],
-};
-
-const REC_SUGGESTIONS = {
-  ru: [
-    'для семьи с детьми', 'рядом с метро', 'тихий зелёный район', 'с панорамным видом',
-    'для первой покупки', 'под сдачу в аренду', 'современный ремонт', 'просторная и светлая',
-    'недорого, но уютно', 'ближе к центру', 'для пары без детей', 'с балконом',
-    'студия для студента', 'дом с двором', 'инвестиция с ростом цены', 'апартаменты у воды',
-    'для удалённой работы', 'с парковкой', 'рядом со школой', 'премиум-класс',
-  ],
-  en: [
-    'for a family with kids', 'near the metro', 'quiet green area', 'with a panoramic view',
-    'for a first purchase', 'good to rent out', 'modern renovation', 'spacious and bright',
-    'affordable but cosy', 'closer to downtown', 'for a couple', 'with a balcony',
-    'studio for a student', 'house with a yard', 'investment with upside', 'apartments by the water',
-    'good for remote work', 'with parking', 'near a school', 'premium class',
-  ],
-};
-
 export function RecommendationsPage() {
   const { user } = useApp(); const nav = useNavigate();
   const { lang, t } = useI18n();

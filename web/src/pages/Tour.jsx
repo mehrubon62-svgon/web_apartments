@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
 import { useToast } from '../lib/toast.jsx';
+import { useI18n } from '../lib/i18n.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { Spinner, Modal } from '../components/Common.jsx';
 
@@ -11,6 +12,7 @@ export function TourPage() {
   const nav = useNavigate();
   const toast = useToast();
   const { user } = useApp();
+  const { lang } = useI18n();
   const [sp] = useSearchParams();
   const panoRef = useRef(null);
   const viewerRef = useRef(null);
@@ -59,6 +61,21 @@ export function TourPage() {
     const x = e.clientX - r.left, y = e.clientY - r.top;
     setRect({ left: Math.min(x, x0), top: Math.min(y, y0), width: Math.abs(x - x0), height: Math.abs(y - y0) });
   }
+  // Crop the panorama canvas down to the selected rectangle so the AI sees
+  // EXACTLY the zone the user outlined (not the whole 360° frame).
+  function cropZone(left, top, w, h, r) {
+    try {
+      const c = panoRef.current.querySelector('canvas');
+      if (!c) return null;
+      const sx = c.width / r.width, sy = c.height / r.height;
+      const cw = Math.max(1, Math.round(w * sx)), ch = Math.max(1, Math.round(h * sy));
+      const tmp = document.createElement('canvas');
+      tmp.width = cw; tmp.height = ch;
+      const ctx = tmp.getContext('2d');
+      ctx.drawImage(c, Math.round(left * sx), Math.round(top * sy), cw, ch, 0, 0, cw, ch);
+      return tmp.toDataURL('image/jpeg', 0.82).split(',')[1];
+    } catch { return null; }
+  }
   function onMouseUp(e) {
     if (!drag.current) return;
     const { x0, y0, r } = drag.current; drag.current = null;
@@ -69,8 +86,7 @@ export function TourPage() {
     if (!user) { toast('Войдите, чтобы задавать вопросы', 'info'); nav('/auth'); return; }
     const coords = { x: +(left / r.width).toFixed(4), y: +(top / r.height).toFixed(4), w: +(w / r.width).toFixed(4), h: +(h / r.height).toFixed(4) };
     coords.w = Math.min(coords.w, 1 - coords.x) || 0.01; coords.h = Math.min(coords.h, 1 - coords.y) || 0.01;
-    let imgB64 = null;
-    try { const c = panoRef.current.querySelector('canvas'); if (c) imgB64 = c.toDataURL('image/jpeg', 0.7).split(',')[1]; } catch {}
+    const imgB64 = cropZone(left, top, w, h, r);
     const room = viewerRef.current?.getScene ? viewerRef.current.getScene() : null;
     setSpatial({ coords, room, imgB64 });
   }
@@ -83,33 +99,41 @@ export function TourPage() {
   const rooms = (tour && tour.rooms) || [];
   return (
     <div className="tour-stage">
-      <div id="panorama" ref={panoRef} className={zoneMode ? 'zone-selecting' : ''} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} />
+      <div id="panorama" ref={panoRef} />
+      {/* Capture overlay sits ABOVE the panorama in zone mode so drags select a
+          rectangle instead of rotating the view. */}
+      {zoneMode && (
+        <div className="zone-capture" onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+          <div className="zone-hint">{rect ? '' : (lang === 'ru' ? 'Выделите зону — потяните рамку' : 'Drag to outline a zone')}</div>
+          {rect && <div className="zone-rect" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} />}
+        </div>
+      )}
       {tour === undefined && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center' }}><Spinner big /></div>}
-      {rect && <div className="zone-rect" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} />}
       <div className="tour-toolbar">
-        <button onClick={() => nav(`/properties/${id}`)}><Icon name="arrow-left" /> Объект</button>
-        <button className={zoneMode ? 'active' : ''} onClick={() => setZoneMode(!zoneMode)}><Icon name="search" /> {zoneMode ? 'Отменить' : 'Спросить про зону'}</button>
-        <button onClick={share}><Icon name="link" /> Поделиться</button>
+        <button onClick={() => nav(`/properties/${id}`)}><Icon name="arrow-left" /> {lang === 'ru' ? 'Объект' : 'Listing'}</button>
+        <button className={zoneMode ? 'active' : ''} onClick={() => { setRect(null); setZoneMode(!zoneMode); }}><Icon name="search" /> {zoneMode ? (lang === 'ru' ? 'Отменить' : 'Cancel') : (lang === 'ru' ? 'Спросить про зону' : 'Ask about a zone')}</button>
+        <button onClick={share}><Icon name="link" /> {lang === 'ru' ? 'Поделиться' : 'Share'}</button>
       </div>
       {rooms.length > 1 && (
         <div className="tour-rooms">
           {rooms.map((r) => <button key={r.id} onClick={() => viewerRef.current && viewerRef.current.loadScene(r.id)}>{r.name || r.id}</button>)}
         </div>
       )}
-      {spatial && <SpatialModal propertyId={id} info={spatial} onClose={() => setSpatial(null)} />}
+      {spatial && <SpatialModal propertyId={id} info={spatial} lang={lang} onClose={() => setSpatial(null)} />}
     </div>
   );
 }
 
-function SpatialModal({ propertyId, info, onClose }) {
+function SpatialModal({ propertyId, info, lang = 'ru', onClose }) {
   const toast = useToast();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState(null);
   const [pending, setPending] = useState(false);
 
   async function ask() {
-    if (!q.trim()) return toast('Введите вопрос', 'err');
+    if (!q.trim()) return toast(L('Введите вопрос', 'Enter a question'), 'err');
     setBusy(true); setPending(true);
     try {
       const qa = await api.askSpatial({ property_id: Number(propertyId), room_id: info.room, zone_coords: info.coords, question: q.trim(), image_b64: info.imgB64 || null });
@@ -124,17 +148,29 @@ function SpatialModal({ propertyId, info, onClose }) {
     async function check() {
       tries++;
       try { const qa = await api.spatialOne(qaId); if (qa.status !== 'pending') { done(qa); } } catch {}
-      if (tries > 30) done({ status: 'error', answer: 'Превышено время ожидания.' });
+      if (tries > 30) done({ status: 'error', answer: L('Превышено время ожидания.', 'Request timed out.') });
     }
-    function done(qa) { clearInterval(timer); window.removeEventListener('nestora:rt', onRt); setPending(false); setAnswer(qa.answer || 'Не удалось получить ответ.'); }
+    function done(qa) { clearInterval(timer); window.removeEventListener('nestora:rt', onRt); setPending(false); setAnswer(qa.answer || L('Не удалось получить ответ.', 'Could not get an answer.')); }
   }
 
+  const suggestions = lang === 'ru'
+    ? ['Из какого материала это сделано?', 'В каком это состоянии?', 'Сколько примерно стоит заменить?', 'Это качественная отделка?']
+    : ['What material is this?', 'What condition is it in?', 'Roughly how much to replace?', 'Is this a quality finish?'];
+
   return (
-    <Modal title="Spatial Q&A" onClose={onClose} footer={!answer && !pending ? <button className="btn btn-primary" onClick={ask} disabled={busy}>{busy ? <span className="spinner-sm" /> : 'Спросить ИИ'}</button> : null}>
-      <p className="muted mb-8">Вопрос про выделенную зону. Ответит ИИ (vision), это займёт несколько секунд.</p>
-      {!answer && <div className="field"><label>Ваш вопрос</label><textarea className="textarea" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Например: из какого материала эта стена?" /></div>}
-      {pending && <div className="card card-pad" style={{ background: 'var(--surface-2)' }}><span className="typing"><span /><span /><span /></span> <span className="muted">ИИ анализирует зону...</span></div>}
-      {answer && <div className="card card-pad" style={{ background: 'var(--accent-soft)' }}><div style={{ fontWeight: 700, marginBottom: 6 }}><Icon name="bot" /> Ответ ИИ</div><p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{answer}</p></div>}
+    <Modal title="Spatial Q&A" onClose={onClose} footer={!answer && !pending ? <button className="btn btn-primary" onClick={ask} disabled={busy}>{busy ? <span className="spinner-sm" /> : L('Спросить ИИ', 'Ask AI')}</button> : null}>
+      <div className="row" style={{ gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+        {info.imgB64 && <img className="zone-thumb" src={`data:image/jpeg;base64,${info.imgB64}`} alt="zone" />}
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>{L('Вопрос про выделенную зону. ИИ (vision) посмотрит именно на этот фрагмент.', 'A question about the outlined zone. The AI (vision) will look at exactly this crop.')}</p>
+      </div>
+      {!answer && <div className="field"><label>{L('Ваш вопрос', 'Your question')}</label><textarea className="textarea" value={q} onChange={(e) => setQ(e.target.value)} placeholder={L('Например: из какого материала эта стена?', 'E.g.: what material is this wall?')} /></div>}
+      {!answer && !pending && (
+        <div className="row wrap" style={{ gap: 6, marginBottom: 4 }}>
+          {suggestions.map((s) => <button key={s} className="chip" onClick={() => setQ(s)}>{s}</button>)}
+        </div>
+      )}
+      {pending && <div className="card card-pad" style={{ background: 'var(--surface-2)' }}><span className="typing"><span /><span /><span /></span> <span className="muted">{L('ИИ анализирует зону...', 'AI is analyzing the zone...')}</span></div>}
+      {answer && <div className="card card-pad" style={{ background: 'var(--accent-soft)' }}><div style={{ fontWeight: 700, marginBottom: 6 }}><Icon name="bot" /> {L('Ответ ИИ', 'AI answer')}</div><p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{answer}</p></div>}
     </Modal>
   );
 }

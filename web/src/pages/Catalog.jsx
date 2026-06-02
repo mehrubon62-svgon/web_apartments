@@ -20,13 +20,16 @@ export function CatalogPage() {
   const [expand, setExpand] = useState(1);          // page-1 only: 1..3 chunks shown (=Show more clicks +1)
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  // Rotating bilingual search hints under the hero search.
-  const [hints, setHints] = useState(() => pickPhrases(SEARCH_PHRASES, lang, 5));
+  // Rotating placeholder phrase inside the search box (bilingual, cycles).
+  const [hintIdx, setHintIdx] = useState(0);
+  const phrasesRef = useRef(pickPhrases(SEARCH_PHRASES, lang, 40));
   useEffect(() => {
-    setHints(pickPhrases(SEARCH_PHRASES, lang, 5));
-    const id = setInterval(() => setHints(pickPhrases(SEARCH_PHRASES, lang, 5)), 4500);
+    phrasesRef.current = pickPhrases(SEARCH_PHRASES, lang, 40);
+    setHintIdx(0);
+    const id = setInterval(() => setHintIdx((i) => (i + 1) % phrasesRef.current.length), 3000);
     return () => clearInterval(id);
   }, [lang]);
+  const placeholder = (lang === 'ru' ? 'Поиск: «' : 'Search: "') + (phrasesRef.current[hintIdx] || '') + (lang === 'ru' ? '», адрес, район...' : '", address, area...');
   // New random order on each page-load (kept stable across pagination).
   const seedRef = useRef(Math.floor(Math.random() * 1e9));
   const LIMIT = 20;            // items per "Show more" chunk
@@ -65,14 +68,8 @@ export function CatalogPage() {
           <h1>{t('Найдите дом, в который захочется вернуться')}</h1>
           <p>{t('Иммерсивные 360°-туры, ответы ИИ про любую зону квартиры и честные сделки онлайн.')}</p>
           <div className="hero-search">
-            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} placeholder={t('Поиск: «двушка у метро», адрес, район...')} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} placeholder={placeholder} />
             <button className="btn btn-primary" onClick={() => doSearch()}>{t('Искать')}</button>
-          </div>
-          <div className="hero-hints">
-            <span className="hero-hints-label">{lang === 'ru' ? 'Попробуйте:' : 'Try:'}</span>
-            {hints.map((h) => (
-              <button key={h} className="hero-hint-chip" onClick={() => { setQ(h); doSearch(h); }}>{h}</button>
-            ))}
           </div>
           <div className="hero-stats">
             <div><b>360°</b><span>{t('Виртуальные туры')}</span></div>

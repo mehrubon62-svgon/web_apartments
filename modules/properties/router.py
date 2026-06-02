@@ -205,6 +205,7 @@ def map_view(
         MapMarker(
             id=p.id, lat=p.lat, lng=p.lng, price=p.price,
             type=p.type, deal_type=p.deal_type, title=p.title,
+            cover_url=cover_url(p),
         )
         for p in props
     ]

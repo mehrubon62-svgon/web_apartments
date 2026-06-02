@@ -98,6 +98,7 @@ class MapMarker(BaseModel):
     type: PropertyType
     deal_type: DealType
     title: str
+    cover_url: str | None = None
 
 
 class InfrastructureMarker(BaseModel):

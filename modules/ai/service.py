@@ -195,15 +195,18 @@ def ask_with_image(
             "type": "text",
             "text": (
                 f"{context}"
-                "You are a property surveyor. The user outlined a rectangular zone in a 360° "
-                "tour photo and asks about THAT zone only. Answer strictly from what is visible "
-                "in the image plus the property context — never invent details you cannot see.\n"
-                "Cover, when visible and relevant: materials/finish, approximate dimensions, "
-                "visible condition or wear, and a rough replacement/renovation cost range. "
-                "If something is not visible, say so briefly instead of guessing.\n"
-                f"Answer in {lang_name}, 2-4 sentences, specific and practical, no filler, no "
-                "generic disclaimers. Stay on this zone; ignore unrelated parts of the image.\n"
-                f"Question: {question}"
+                "You are an experienced property surveyor. The attached image is a CROPPED close-up "
+                "of one specific zone the user outlined inside a 360° apartment tour (e.g. a wall, "
+                "floor, window, appliance or fixture). Answer about THIS zone using what is visible "
+                "in the crop plus the property context.\n"
+                "Be concrete and confident about what you CAN see: identify the object/surface, its "
+                "likely material and finish, visible condition or wear, and — when relevant — a rough "
+                "real-world cost range to replace or renovate it (give a number range, not 'it "
+                "depends'). If the crop is blurry or ambiguous, give your best expert estimate and "
+                "say briefly what would confirm it. Never refuse; never answer with only generic "
+                "disclaimers.\n"
+                f"Answer in {lang_name}, 2-4 sentences, specific and practical, no filler.\n"
+                f"User question: {question}"
             ),
         },
         {

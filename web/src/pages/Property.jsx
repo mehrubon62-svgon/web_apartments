@@ -244,56 +244,124 @@ function MiniStat({ label, value }) { return <div className="stat"><div classNam
 
 function Reviews({ p, onChanged }) {
   const { user } = useApp();
+  const { lang } = useI18n();
+  const toast = useToast();
   const [list, setList] = useState(undefined);
   const [open, setOpen] = useState(false);
-  // Reviews scoped to the seller, filtered by this listing's deal type:
-  // rentals show rental reviews, sales show this seller's sale reviews.
+  const [editing, setEditing] = useState(null);   // review object being edited
+  const [gate, setGate] = useState(null);         // can-review info
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  // Reviews scoped to the seller, filtered by this listing's deal type.
   const reload = () => api.sellerReviews(p.seller.id, { deal_type: p.deal_type })
     .then((d) => setList(d.items)).catch(() => setList([]));
-  useEffect(() => { setList(undefined); reload(); }, [p.id]);
+  useEffect(() => {
+    setList(undefined); reload();
+    if (user) api.canReview(p.id).then(setGate).catch(() => setGate(null));
+    else setGate(null);
+  }, [p.id, user]);
   if (list === undefined) return <Spinner />;
-  const scope = p.deal_type === 'rent' ? 'по арендам этого продавца' : 'по объектам этого продавца';
+  const scope = p.deal_type === 'rent' ? L('по арендам этого продавца', 'rental reviews of this seller') : L('по объектам этого продавца', 'reviews of this seller');
+
+  const myReviewId = gate?.existing_review_id || null;
+  function gateHint() {
+    if (!user) return L('Войдите, чтобы оставить отзыв', 'Sign in to leave a review');
+    if (gate?.reason === 'own_listing') return L('Нельзя оценить свой объект', 'You cannot review your own listing');
+    if (gate?.reason === 'need_booking') return L('Отзыв можно оставить после бронирования', 'You can review after booking');
+    if (gate?.reason === 'need_request') return L('Отзыв можно оставить после заявки на просмотр', 'You can review after a viewing request');
+    return null;
+  }
+  const canWrite = gate?.can_review;
+
   return (
     <div>
       <div className="row-between mb-16">
         <div>
-          <h3 style={{ fontSize: 17 }}>Отзывы ({list.length})</h3>
+          <h3 style={{ fontSize: 17 }}>{L('Отзывы', 'Reviews')} ({list.length})</h3>
           <div className="muted" style={{ fontSize: 13 }}>{scope}</div>
         </div>
-        {user && <button className="btn btn-soft" onClick={() => setOpen(true)}><Icon name="edit" /> Оставить отзыв</button>}
+        {canWrite
+          ? <button className="btn btn-primary btn-review" onClick={() => { setEditing(null); setOpen(true); }}><Icon name="edit" /> {L('Оставить отзыв', 'Write a review')}</button>
+          : gateHint() && <span className="review-gate muted">{gateHint()}</span>}
       </div>
-      {!list.length ? <div className="card card-pad muted center">Отзывов пока нет. Будьте первым!</div> : list.map((r) => (
-        <div key={r.id} className="card card-pad mb-16">
-          <div className="row" style={{ gap: 12, marginBottom: 8 }}>
-            <Avatar user={r.user} size={40} />
-            <div>
-              <div style={{ fontWeight: 700 }}>{r.user?.full_name || 'Пользователь'}</div>
-              <Stars rating={r.rating} />
-            </div>
-            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-              <div className="muted">{fmtDate(r.created_at)}</div>
-              {r.property && r.property.id !== p.id && <Link className="muted" style={{ fontSize: 12 }} to={`/properties/${r.property.id}`}>{r.property.title}</Link>}
-            </div>
-          </div>
-          {r.text && <p style={{ margin: 0 }}>{r.text}</p>}
-        </div>
+      {!list.length ? <div className="card card-pad muted center">{L('Отзывов пока нет. Будьте первым!', 'No reviews yet. Be the first!')}</div> : list.map((r) => (
+        <ReviewCard key={r.id} r={r} p={p} lang={lang}
+          mine={myReviewId === r.id}
+          onEdit={() => { setEditing(r); setOpen(true); }}
+          onDelete={async () => {
+            if (!confirm(L('Удалить ваш отзыв?', 'Delete your review?'))) return;
+            try { await api.deleteReview(p.id, r.id); toast(L('Отзыв удалён', 'Review deleted'), 'ok'); reload(); api.canReview(p.id).then(setGate).catch(() => {}); onChanged && onChanged(); }
+            catch (e) { toast(e.message, 'err'); }
+          }} />
       ))}
-      {open && <ReviewModal p={p} onClose={() => setOpen(false)} onDone={() => { setOpen(false); reload(); onChanged && onChanged(); }} />}
+      {open && <ReviewModal p={p} editing={editing} onClose={() => setOpen(false)} onDone={() => { setOpen(false); reload(); api.canReview(p.id).then(setGate).catch(() => {}); onChanged && onChanged(); }} />}
     </div>
   );
 }
-function ReviewModal({ p, onClose, onDone }) {
+
+function ReviewCard({ r, p, lang, mine, onEdit, onDelete }) {
   const toast = useToast();
-  const [rating, setRating] = useState(5);
-  const [text, setText] = useState('');
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  const [tr, setTr] = useState(null);          // translated text
+  const [busy, setBusy] = useState(false);
+  // Detect if the review text language differs from the UI language.
+  const hasCyrillic = /[\u0400-\u04FF]/.test(r.text || '');
+  const reviewLang = (r.text || '').trim() ? (hasCyrillic ? 'ru' : 'en') : null;
+  const canTranslate = reviewLang && reviewLang !== lang;
+
+  async function toggleTranslate() {
+    if (tr) { setTr(null); return; }
+    setBusy(true);
+    try {
+      const res = await api.translateText(r.text, lang);
+      if (res.translated) setTr(res.text);
+      else toast(L('Перевод не требуется', 'No translation needed'), 'info');
+    } catch (e) { toast(e.message, 'err'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card card-pad mb-16">
+      <div className="row" style={{ gap: 12, marginBottom: 8 }}>
+        <Avatar user={r.user} size={40} />
+        <div>
+          <div style={{ fontWeight: 700 }}>{r.user?.full_name || L('Пользователь', 'User')}</div>
+          <Stars rating={r.rating} />
+        </div>
+        <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+          <div className="muted">{fmtDate(r.created_at)}</div>
+          {r.property && r.property.id !== p.id && <Link className="muted" style={{ fontSize: 12 }} to={`/properties/${r.property.id}`}>{r.property.title}</Link>}
+        </div>
+      </div>
+      {r.text && <p style={{ margin: 0 }}>{tr || r.text}</p>}
+      <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+        {canTranslate && <button className="btn btn-ghost btn-sm" onClick={toggleTranslate} disabled={busy}>
+          {busy ? <span className="spinner-sm" /> : <Icon name="globe" />} {tr ? L('Оригинал', 'Original') : L('Перевести', 'Translate')}
+        </button>}
+        {mine && <>
+          <button className="btn btn-ghost btn-sm" onClick={onEdit}><Icon name="edit" /> {L('Изменить', 'Edit')}</button>
+          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={onDelete}><Icon name="trash" /> {L('Удалить', 'Delete')}</button>
+        </>}
+      </div>
+    </div>
+  );
+}
+function ReviewModal({ p, editing, onClose, onDone }) {
+  const toast = useToast();
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  const [rating, setRating] = useState(editing ? editing.rating : 5);
+  const [text, setText] = useState(editing ? (editing.text || '') : '');
   async function save() {
-    try { await api.addReview(p.id, { rating, text: text.trim() || null }); toast('Спасибо за отзыв!', 'ok'); onDone(); }
-    catch (e) { toast(e.message, 'err'); }
+    try {
+      if (editing) { await api.editReview(p.id, editing.id, { rating, text: text.trim() || null }); toast(L('Отзыв обновлён', 'Review updated'), 'ok'); }
+      else { await api.addReview(p.id, { rating, text: text.trim() || null }); toast(L('Спасибо за отзыв!', 'Thanks for your review!'), 'ok'); }
+      onDone();
+    } catch (e) { toast(e.message, 'err'); }
   }
   return (
-    <Modal title="Ваш отзыв" onClose={onClose} footer={<button className="btn btn-primary" onClick={save}>Опубликовать</button>}>
-      <div className="field"><label>Оценка</label><div className="star-picker"><Stars rating={rating} size={30} interactive onPick={setRating} /></div></div>
-      <div className="field"><label>Комментарий</label><textarea className="textarea" value={text} onChange={(e) => setText(e.target.value)} placeholder="Поделитесь впечатлениями..." /></div>
+    <Modal title={editing ? L('Изменить отзыв', 'Edit review') : L('Ваш отзыв', 'Your review')} onClose={onClose} footer={<button className="btn btn-primary" onClick={save}>{editing ? L('Сохранить', 'Save') : L('Опубликовать', 'Publish')}</button>}>
+      <div className="field"><label>{L('Оценка', 'Rating')}</label><div className="star-picker"><Stars rating={rating} size={30} interactive onPick={setRating} /></div></div>
+      <div className="field"><label>{L('Комментарий', 'Comment')}</label><textarea className="textarea" value={text} onChange={(e) => setText(e.target.value)} placeholder={L('Поделитесь впечатлениями...', 'Share your impressions...')} /></div>
     </Modal>
   );
 }
@@ -424,28 +492,41 @@ function MiniMap({ p }) {
 function BookingModal({ p, onClose }) {
   const toast = useToast();
   const nav = useNavigate();
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const nights = start && end ? Math.max((new Date(end) - new Date(start)) / 86400000, 0) : 0;
+  // Map known backend (English) errors to the current UI language.
+  function mapErr(msg) {
+    const m = {
+      'end_date must be after start_date': L('Дата выезда должна быть позже даты заезда', 'Check-out must be after check-in'),
+      'Selected dates are not available': L('Выбранные даты недоступны', 'Selected dates are not available'),
+      'This property is not for rent': L('Этот объект не сдаётся в аренду', 'This property is not for rent'),
+      'Property not found': L('Объект не найден', 'Property not found'),
+    };
+    return m[msg] || msg;
+  }
   async function pay() {
-    if (!start || !end) return toast('Выберите даты', 'err');
+    if (!start || !end) return toast(L('Выберите даты', 'Select dates'), 'err');
+    if (new Date(end) <= new Date(start)) return toast(L('Дата выезда должна быть позже даты заезда', 'Check-out must be after check-in'), 'err');
     try {
       const res = await api.createBooking({ property_id: p.id, start_date: start, end_date: end });
       onClose();
       window.__checkout = res;
       nav('/bookings');
       setTimeout(() => window.open(res.checkout_url, '_blank'), 100);
-      toast('Бронь создана — оплатите в открывшемся окне', 'info', 5000);
-    } catch (e) { toast(e.message, 'err'); }
+      toast(L('Бронь создана — оплатите в открывшемся окне', 'Booking created — pay in the opened window'), 'info', 5000);
+    } catch (e) { toast(mapErr(e.message), 'err'); }
   }
   const today = new Date().toISOString().slice(0, 10);
   return (
-    <Modal title={`Бронирование — ${p.title}`} onClose={onClose} footer={<button className="btn btn-accent" onClick={pay}>Перейти к оплате</button>}>
+    <Modal title={`${L('Бронирование', 'Booking')} — ${p.title}`} onClose={onClose} footer={<button className="btn btn-accent" onClick={pay}>{L('Перейти к оплате', 'Proceed to payment')}</button>}>
       <div className="input-group">
-        <div className="field" style={{ flex: 1 }}><label>Заезд</label><input className="input" type="date" min={today} value={start} onChange={(e) => setStart(e.target.value)} /></div>
-        <div className="field" style={{ flex: 1 }}><label>Выезд</label><input className="input" type="date" min={today} value={end} onChange={(e) => setEnd(e.target.value)} /></div>
+        <div className="field" style={{ flex: 1 }}><label>{L('Заезд', 'Check-in')}</label><input className="input" type="date" min={today} value={start} onChange={(e) => setStart(e.target.value)} /></div>
+        <div className="field" style={{ flex: 1 }}><label>{L('Выезд', 'Check-out')}</label><input className="input" type="date" min={start || today} value={end} onChange={(e) => setEnd(e.target.value)} /></div>
       </div>
-      {nights > 0 && <p className="muted">{nights} ноч. × {money(p.price)} = {money(nights * p.price)}</p>}
+      {nights > 0 && <p className="muted">{nights} {L('ноч.', 'nights')} × {money(p.price)} = {money(nights * p.price)}</p>}
     </Modal>
   );
 }
