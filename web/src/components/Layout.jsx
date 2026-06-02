@@ -5,6 +5,7 @@ import { useApp } from '../lib/store.jsx';
 import { useI18n } from '../lib/i18n.jsx';
 import { api } from '../lib/api.js';
 import { Avatar } from './Common.jsx';
+import { AgentWidget } from './AgentWidget.jsx';
 import { timeAgo } from '../lib/format.js';
 
 const NOTIF_ICON = {
@@ -31,7 +32,6 @@ export function Layout() {
   const links = [
     ['/', t('Каталог'), true],
     ['/map', t('Карта')],
-    ['/agent', t('ИИ-агент')],
     ['/recommendations', t('Подбор')],
     user && ['/favorites', t('Избранное')],
     user && ['/messages', t('Сообщения')],
@@ -55,9 +55,9 @@ export function Layout() {
               <button className={lang === 'ru' ? 'active' : ''} onClick={() => setLang('ru')}>RU</button>
               <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
             </div>
-            {user && <NotifBell open={notifOpen} setOpen={setNotifOpen} unread={unread} />}
+            {user && <NotifBell open={notifOpen} setOpen={(v) => { setNotifOpen(v); if (v) setMenuOpen(false); }} unread={unread} />}
             {user
-              ? <UserMenu open={menuOpen} setOpen={setMenuOpen} />
+              ? <UserMenu open={menuOpen} setOpen={(v) => { setMenuOpen(v); if (v) setNotifOpen(false); }} />
               : <>
                   <Link className="btn btn-ghost btn-sm" to="/auth">{t('Войти')}</Link>
                   <Link className="btn btn-primary btn-sm" to="/auth?mode=register">{t('Регистрация')}</Link>
@@ -73,10 +73,12 @@ export function Layout() {
 
       <Footer />
 
+      <AgentWidget />
+
       <nav className="mobile-tabbar">
         <NavLink to="/" end><span className="mi"><Icon name="home" /></span>{t('Каталог')}</NavLink>
         <NavLink to="/map"><span className="mi"><Icon name="map" /></span>{t('Карта')}</NavLink>
-        <NavLink to="/agent"><span className="mi"><Icon name="bot" /></span>{t('ИИ-агент')}</NavLink>
+        <NavLink to="/recommendations"><span className="mi"><Icon name="sparkles" /></span>{t('Подбор')}</NavLink>
         {user
           ? <NavLink to="/favorites"><span className="mi"><Icon name="heart-outline" /></span>{t('Избранное')}</NavLink>
           : <NavLink to="/auth"><span className="mi"><Icon name="user" /></span>{t('Войти')}</NavLink>}

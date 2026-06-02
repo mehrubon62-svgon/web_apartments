@@ -8,6 +8,7 @@ cache and falls back to computing on the fly.
 from __future__ import annotations
 
 import json
+import random
 
 import redis as sync_redis
 from sqlalchemy.orm import Session, selectinload
@@ -36,21 +37,27 @@ def _profile(db: Session, user_id: int) -> dict | None:
     type_counts: dict[str, int] = {}
     deal_counts: dict[str, int] = {}
     prices, areas = [], []
+    prices_by_deal: dict[str, list] = {"rent": [], "sale": []}
     for p in props:
         type_counts[p.type.value] = type_counts.get(p.type.value, 0) + 1
         deal_counts[p.deal_type.value] = deal_counts.get(p.deal_type.value, 0) + 1
         prices.append(p.price)
         areas.append(p.area)
+        prices_by_deal.setdefault(p.deal_type.value, []).append(p.price)
+    avg_price_by_deal = {
+        d: (sum(v) / len(v)) for d, v in prices_by_deal.items() if v
+    }
     return {
         "seen_ids": ids,
         "fav_type": max(type_counts, key=type_counts.get),
         "fav_deal": max(deal_counts, key=deal_counts.get),
         "avg_price": sum(prices) / len(prices),
         "avg_area": sum(areas) / len(areas),
+        "avg_price_by_deal": avg_price_by_deal,
     }
 
 
-def compute_recommendations(db: Session, user_id: int, limit: int = 10) -> list[int]:
+def compute_recommendations(db: Session, user_id: int, limit: int = 10, shuffle: bool = True) -> list[int]:
     profile = _profile(db, user_id)
     candidates = (
         db.query(Property)
@@ -58,9 +65,12 @@ def compute_recommendations(db: Session, user_id: int, limit: int = 10) -> list[
         .all()
     )
     if not profile:
-        # Cold start: most viewed active listings.
+        # Cold start: sample from the most-viewed pool so refreshes vary.
         ranked = sorted(candidates, key=lambda p: p.views_count or 0, reverse=True)
-        return [p.id for p in ranked[:limit]]
+        pool = ranked[: max(limit * 3, 12)]
+        if shuffle and len(pool) > limit:
+            random.shuffle(pool)
+        return [p.id for p in pool[:limit]]
 
     def score(p: Property) -> float:
         s = 0.0
@@ -76,10 +86,33 @@ def compute_recommendations(db: Session, user_id: int, limit: int = 10) -> list[
 
     fresh = [p for p in candidates if p.id not in profile["seen_ids"]]
     ranked = sorted(fresh, key=score, reverse=True)
-    return [p.id for p in ranked[:limit]]
+
+    if not shuffle:
+        return [p.id for p in ranked[:limit]]
+
+    # Keep relevance but rotate picks on each refresh: take a high-scoring pool
+    # (~3x the limit) and weighted-sample from it so good matches surface more
+    # often but the exact set differs between page loads.
+    pool = ranked[: max(limit * 3, limit + 6)]
+    if len(pool) <= limit:
+        return [p.id for p in pool]
+    weights = [score(p) + 0.5 for p in pool]  # +0.5 so nothing has zero chance
+    chosen: list[int] = []
+    items = list(zip(pool, weights))
+    while items and len(chosen) < limit:
+        total = sum(w for _, w in items)
+        r = random.uniform(0, total)
+        acc = 0.0
+        for idx, (p, w) in enumerate(items):
+            acc += w
+            if acc >= r:
+                chosen.append(p.id)
+                items.pop(idx)
+                break
+    return chosen
 
 
-def ai_rerank(db: Session, user_id: int, candidate_ids: list[int], query: str | None = None) -> dict | None:
+def ai_rerank(db: Session, user_id: int, candidate_ids: list[int], query: str | None = None, lang: str = "en") -> dict | None:
     """Optionally re-rank algorithm candidates with a reasoning LLM (via OpenRouter).
 
     Returns {"order": [ids...], "explanations": {id: text}} or None if AI is
@@ -94,6 +127,26 @@ def ai_rerank(db: Session, user_id: int, candidate_ids: list[int], query: str | 
     profile = _profile(db, user_id)
     props = db.query(Property).filter(Property.id.in_(candidate_ids)).all()
     by_id = {p.id: p for p in props}
+
+    avg_price = profile["avg_price"] if profile else None
+    avg_area = profile["avg_area"] if profile else None
+
+    def _facts(p) -> dict:
+        """Pre-computed comparison facts vs the user's profile — gives the model
+        concrete arguments instead of generic 'matches your type'. Price is
+        compared within the SAME deal type (rent vs rent, sale vs sale) so the
+        percentages make sense."""
+        f = {}
+        if profile:
+            f["matches_type"] = (p.type.value == profile["fav_type"])
+            f["matches_deal"] = (p.deal_type.value == profile["fav_deal"])
+            ref_price = (profile.get("avg_price_by_deal") or {}).get(p.deal_type.value)
+            if ref_price and ref_price > 0:
+                f["price_vs_avg_pct"] = round((p.price - ref_price) / ref_price * 100)
+            if avg_area and avg_area > 0:
+                f["area_vs_avg_pct"] = round((p.area - avg_area) / avg_area * 100)
+        return f
+
     listings = [
         {
             "id": p.id,
@@ -103,6 +156,7 @@ def ai_rerank(db: Session, user_id: int, candidate_ids: list[int], query: str | 
             "price": p.price,
             "area": p.area,
             "rooms": p.rooms,
+            "vs_you": _facts(p),
         }
         for p in (by_id.get(i) for i in candidate_ids) if p
     ]
@@ -119,17 +173,40 @@ def ai_rerank(db: Session, user_id: int, candidate_ids: list[int], query: str | 
             ensure_ascii=False,
         )
 
+    lang_name = "Russian" if lang == "ru" else "English"
+    if lang == "ru":
+        examples = ("«идеально для семьи — просторнее, чем вы обычно смотрите», "
+                    "«в вашем любимом формате аренды и по комфортному бюджету», "
+                    "«та же уютная квартира, что вам нравится, но в зелёном районе»")
+        vague = "«подходит вам», «соответствует предпочтениям»"
+    else:
+        examples = ("'perfect for a family — roomier than you usually browse', "
+                    "'your favorite rental format and within a comfortable budget', "
+                    "'the cosy apartment style you like, in a greener area'")
+        vague = "'fits you', 'matches your preferences'"
     instruction = (
-        "You are a real-estate recommendation engine. Given a user taste profile and a list "
-        "of candidate listings, reorder them from best to worst match for this user and give a "
-        "one-sentence reason for each. "
+        "You rank real-estate listings for one user. Reorder ALL candidates from best to worst "
+        "match for this user's taste profile, and justify each with a concrete argument.\n"
+        "Each candidate has a 'vs_you' object with pre-computed comparisons: matches_type, "
+        "matches_deal, price_vs_avg_pct (price vs the user's usual for the SAME deal type, %), "
+        "and area_vs_avg_pct. Build the reason from these — do not invent.\n"
     )
     if query:
-        instruction += f"Take this user request into account: '{query}'. "
+        instruction += (
+            f"Prioritize this explicit request above the profile: '{query}'. "
+            "Listings matching it must rank highest and the reason must reference it.\n"
+        )
     instruction += (
-        "Reply with STRICT JSON only, no prose:\n"
-        '{"order": [<listing ids best-first>], "explanations": {"<id>": "<reason>"}}\n\n'
-        f"User profile: {profile_text}\n"
+        f"Write EVERY reason in {lang_name} only. Make it a warm, natural, human sentence a "
+        "helpful agent would say — explain WHY it suits this person, weaving in the matching "
+        f"trait or value (e.g. {examples}). You may mention price/space loosely, but DO NOT "
+        "output bare formulas like '48% cheaper'. Sound conversational, not statistical. "
+        f"Never write vague phrases like {vague}. "
+        "<= 16 words, one sentence per listing, no filler.\n"
+        "Return STRICT JSON only, no prose, no markdown. Include every candidate id exactly once "
+        "in 'order':\n"
+        '{"order":[<ids best-first>],"explanations":{"<id>":"<reason>"}}\n'
+        f"Profile: {profile_text}\n"
         f"Candidates: {json.dumps(listings, ensure_ascii=False)}"
     )
 
@@ -138,6 +215,8 @@ def ai_rerank(db: Session, user_id: int, candidate_ids: list[int], query: str | 
             [{"role": "user", "content": instruction}],
             temperature=0.2,
             model=AI_RECOMMEND_MODEL,
+            max_tokens=500,
+            timeout=22.0,
         )
     except AIError:
         return None

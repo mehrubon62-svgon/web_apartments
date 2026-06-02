@@ -78,6 +78,8 @@ class PropertyOut(BaseModel):
     has_tour: bool = False
     is_favorited: bool = False
     avg_rating: float | None = None
+    seller_rating: float | None = None
+    seller_reviews_count: int = 0
 
     class Config:
         from_attributes = True
@@ -188,3 +190,11 @@ class AIReviewResult(BaseModel):
     red_flags: list[str] = []
     market: dict = {}
     ai_used: bool = False
+
+
+class TranslationResult(BaseModel):
+    title: str
+    description: str | None = None
+    target_lang: str          # ru | en
+    source_lang: str | None = None  # detected source, if known
+    translated: bool = False  # False if no translation was needed/available

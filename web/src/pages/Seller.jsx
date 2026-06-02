@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
 import { useToast } from '../lib/toast.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { Spinner, Empty, Avatar, Stars, Modal } from '../components/Common.jsx';
 import { PropertyGrid } from '../components/PropertyCard.jsx';
-import { fmtDate, ROLE_LABELS } from '../lib/format.js';
+import { fmtDate, ROLE_LABELS, DEAL_LABELS, money } from '../lib/format.js';
 
 export function SellerPage() {
   const { id } = useParams();
@@ -17,13 +17,14 @@ export function SellerPage() {
   const [tab, setTab] = useState('all');           // all | rent | sale
   const [listings, setListings] = useState(null);
   const [reviews, setReviews] = useState(null);
+  const [revShown, setRevShown] = useState(6);
   const [contactOpen, setContactOpen] = useState(false);
 
-  useEffect(() => { setProfile(undefined); api.publicProfile(id).then(setProfile).catch(() => setProfile(null)); window.scrollTo(0, 0); }, [id]);
+  useEffect(() => { setProfile(undefined); api.publicProfile(id).then(setProfile).catch(() => setProfile(null)); }, [id]);
 
   useEffect(() => {
     const dt = tab === 'all' ? undefined : tab;
-    setListings(null); setReviews(null);
+    setListings(null); setReviews(null); setRevShown(6);
     api.sellerListings(id, { deal_type: dt }).then((d) => setListings(d.items)).catch(() => setListings([]));
     api.sellerReviews(id, { deal_type: dt }).then((d) => setReviews(d.items)).catch(() => setReviews([]));
   }, [id, tab]);
@@ -75,22 +76,44 @@ export function SellerPage() {
       <h2 className="section-title mt-24">
         Отзывы {tab !== 'all' && <span className="muted" style={{ fontSize: 15, fontWeight: 400 }}>({tab === 'rent' ? 'аренда' : 'продажа'})</span>}
       </h2>
-      {reviews === null ? <Spinner /> : !reviews.length ? <div className="card card-pad muted center">Отзывов пока нет.</div> : reviews.map((r) => (
-        <div key={r.id} className="card card-pad mb-16">
-          <div className="row" style={{ gap: 12, marginBottom: 8 }}>
-            <Avatar user={r.user} size={40} />
-            <div>
-              <div style={{ fontWeight: 700 }}>{r.user?.full_name || 'Пользователь'}</div>
-              <Stars rating={r.rating} />
-            </div>
-            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-              <div className="muted">{fmtDate(r.created_at)}</div>
-              {r.property && <a className="muted" style={{ fontSize: 12 }} href={`#/properties/${r.property.id}`}>{r.property.title}</a>}
+      {reviews === null ? <Spinner /> : !reviews.length ? <div className="card card-pad muted center">Отзывов пока нет.</div> : reviews.slice(0, revShown).map((r) => (
+        <div key={r.id} className="card review-thread mb-16">
+          {r.property && (
+            <Link className="review-listing" to={`/properties/${r.property.id}`}>
+              {r.property.cover_url
+                ? <img src={r.property.cover_url} alt="" />
+                : <div className="rl-ph"><Icon name="home" /></div>}
+              <div className="rl-info">
+                <div className="rl-title">{r.property.title}</div>
+                <div className="rl-meta">
+                  <span className={`tag ${r.property.deal_type === 'rent' ? 'tag-rent' : 'tag-sale'}`}>{DEAL_LABELS[r.property.deal_type]}</span>
+                  <span className="rl-price">{money(r.property.price)}{r.property.deal_type === 'rent' && <small> / ночь</small>}</span>
+                </div>
+              </div>
+              <Icon name="arrow-right" />
+            </Link>
+          )}
+          <div className="review-reply">
+            <div className="review-reply-line" />
+            <div className="review-reply-body">
+              <div className="row" style={{ gap: 10, marginBottom: 6 }}>
+                <Avatar user={r.user} size={36} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{r.user?.full_name || 'Пользователь'}</div>
+                  <Stars rating={r.rating} size={13} />
+                </div>
+                <span className="muted" style={{ fontSize: 12 }}>{fmtDate(r.created_at)}</span>
+              </div>
+              {r.text && <p style={{ margin: 0, fontSize: 14.5 }}>{r.text}</p>}
             </div>
           </div>
-          {r.text && <p style={{ margin: 0 }}>{r.text}</p>}
         </div>
       ))}
+      {reviews && reviews.length > revShown && (
+        <div className="center mt-8">
+          <button className="btn btn-ghost" onClick={() => setRevShown((n) => n + 6)}>Показать ещё отзывы</button>
+        </div>
+      )}
 
       {contactOpen && <ContactModal sellerName={profile.full_name} listings={listings} onClose={() => setContactOpen(false)} />}
     </div></div>

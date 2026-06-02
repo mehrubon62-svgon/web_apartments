@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
+import { useI18n } from '../lib/i18n.jsx';
 import { useToast } from '../lib/toast.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { Spinner, Empty, Modal, Avatar, Stars } from '../components/Common.jsx';
@@ -52,20 +53,53 @@ export function HistoryPage() {
   );
 }
 
+const REC_SUGGESTIONS = {
+  ru: [
+    'для семьи с детьми', 'рядом с метро', 'тихий зелёный район', 'с панорамным видом',
+    'для первой покупки', 'под сдачу в аренду', 'современный ремонт', 'просторная и светлая',
+    'недорого, но уютно', 'ближе к центру', 'для пары без детей', 'с балконом',
+    'студия для студента', 'дом с двором', 'инвестиция с ростом цены', 'апартаменты у воды',
+    'для удалённой работы', 'с парковкой', 'рядом со школой', 'премиум-класс',
+  ],
+  en: [
+    'for a family with kids', 'near the metro', 'quiet green area', 'with a panoramic view',
+    'for a first purchase', 'good to rent out', 'modern renovation', 'spacious and bright',
+    'affordable but cosy', 'closer to downtown', 'for a couple', 'with a balcony',
+    'studio for a student', 'house with a yard', 'investment with upside', 'apartments by the water',
+    'good for remote work', 'with parking', 'near a school', 'premium class',
+  ],
+};
+
 export function RecommendationsPage() {
   const { user } = useApp(); const nav = useNavigate();
+  const { lang, t } = useI18n();
   useEffect(() => { if (!user) nav('/auth'); }, [user]);
   const [ai, setAi] = useState(null);
   const [basic, setBasic] = useState(null);
   const [query, setQuery] = useState('');
-  const loadAi = () => { setAi(null); api.aiRecommendations({ limit: 9, query: query.trim() || undefined }).then(setAi).catch(() => setAi({ items: [], ai_used: false })); };
-  useEffect(() => { loadAi(); api.recommendations({ limit: 8 }).then((d) => setBasic(d.items)).catch(() => setBasic([])); }, []);
+  // 6 random suggestion chips for the current language, reshuffled per load.
+  const chips = useMemo(() => {
+    const all = [...(REC_SUGGESTIONS[lang] || REC_SUGGESTIONS.en)];
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    return all.slice(0, 6);
+  }, [lang]);
+  const loadAi = (q) => { setAi(null); api.aiRecommendations({ limit: 9, query: (q ?? query).trim() || undefined, lang, _t: Date.now() }).then(setAi).catch(() => setAi({ items: [], ai_used: false })); };
+  const loadBasic = () => { setBasic(null); api.recommendations({ limit: 8, _t: Date.now() }).then((d) => setBasic(d.items)).catch(() => setBasic([])); };
+  const refreshAll = () => { loadAi(); loadBasic(); };
+  useEffect(() => { refreshAll(); }, []);
   return (
-    <Page title="Подбор для вас" sub="Рекомендации на основе вашей истории и избранного">
+    <Page title="Подбор для вас" sub="Рекомендации на основе вашей истории и избранного"
+      actions={<button className="btn btn-ghost btn-sm" onClick={refreshAll}><Icon name="repeat" /> Обновить</button>}>
       <div className="card card-pad mb-16">
         <div className="row wrap" style={{ gap: 10 }}>
-          <input className="input" style={{ maxWidth: 420 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Подсказка ИИ: например «для семьи с детьми»" />
-          <button className="btn btn-primary" onClick={loadAi}><Icon name="sparkles" /> Подобрать с ИИ</button>
+          <input className="input" style={{ maxWidth: 420 }} value={query} onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && loadAi()} placeholder="Подсказка ИИ: например «для семьи с детьми»" />
+          <button className="btn btn-primary" onClick={() => loadAi()}><Icon name="sparkles" /> Подобрать с ИИ</button>
+        </div>
+        <div className="row wrap" style={{ gap: 6, marginTop: 12 }}>
+          {chips.map((s) => (
+            <button key={s} className="chip" onClick={() => { setQuery(s); loadAi(s); }}>{s}</button>
+          ))}
         </div>
       </div>
       <h2 className="section-title"><Icon name="sparkles" /> С объяснением от ИИ</h2>
@@ -181,9 +215,11 @@ export function RequestsPage() {
 export function ProfilePage() {
   const user = useAuthGuard();
   const { setUser, logout, isSeller } = useApp();
+  const { lang } = useI18n();
   const toast = useToast(); const nav = useNavigate();
   const [f, setF] = useState({ full_name: '', phone: '', company_name: '' });
   const [pwModal, setPwModal] = useState(false);
+  const [delModal, setDelModal] = useState(false);
   const fileRef = useRef(null);
   useEffect(() => { if (user) setF({ full_name: user.full_name || '', phone: user.phone || '', company_name: user.company_name || '' }); }, [user]);
   if (!user) return null;
@@ -196,45 +232,103 @@ export function ProfilePage() {
     if (!file) return; const fd = new FormData(); fd.append('file', file);
     try { const u = await api.uploadAvatar(fd); setUser(u); toast('Аватар обновлён', 'ok'); } catch (e) { toast(e.message, 'err'); }
   }
-  async function removeAccount() {
-    if (!confirm('Удалить аккаунт? Это необратимо.')) return;
-    try { await api.deleteMe(); logout(); toast('Аккаунт удалён', 'ok'); nav('/auth'); } catch (e) { toast(e.message, 'err'); }
-  }
 
   return (
     <Page title="Профиль" sub="Управление аккаунтом">
-      <div style={{ maxWidth: 560 }}>
-        <div className="card card-pad">
-          <div className="row" style={{ gap: 18, marginBottom: 20 }}>
-            <Avatar user={user} size={90} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>{user.full_name || 'Без имени'}</div>
-              <div className="muted">{user.email}</div>
-              <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                <span className="tag tag-muted">{ROLE_LABELS[user.role]}</span>
-                {user.is_email_verified ? <span className="tag tag-ok">Email подтверждён</span> : <span className="tag tag-warn">Email не подтверждён</span>}
+      <div className="profile-layout">
+        <aside className="profile-aside">
+          <div className="card profile-card">
+            <div className="profile-cover" />
+            <div className="profile-card-body">
+              <div className="profile-avatar-wrap">
+                <Avatar user={user} size={96} />
+                <button className="profile-avatar-edit" title="Сменить фото" onClick={() => fileRef.current.click()}><Icon name="camera" /></button>
+                <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadAvatar(e.target.files[0])} />
               </div>
-              <button className="btn btn-soft btn-sm mt-8" onClick={() => fileRef.current.click()}><Icon name="camera" /> Сменить фото</button>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadAvatar(e.target.files[0])} />
+              <div style={{ fontWeight: 800, fontSize: 19, textAlign: 'center' }}>{user.full_name || 'Без имени'}</div>
+              <div className="muted center" style={{ fontSize: 13.5 }}>{user.email}</div>
+              <div className="row" style={{ gap: 6, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                <span className="tag tag-muted">{ROLE_LABELS[user.role]}</span>
+                {user.is_email_verified ? <span className="tag tag-ok"><Icon name="check" /> Email подтверждён</span> : <span className="tag tag-warn">Email не подтверждён</span>}
+              </div>
+              {isSeller && (
+                <Link className="btn btn-soft btn-block mt-16" to={`/sellers/${user.id}`}><Icon name="eye" /> Мой публичный профиль</Link>
+              )}
             </div>
           </div>
-          <div className="field"><label>Имя</label><input className="input" value={f.full_name} onChange={(e) => setF((s) => ({ ...s, full_name: e.target.value }))} /></div>
-          <div className="field"><label>Телефон</label><input className="input" value={f.phone} onChange={(e) => setF((s) => ({ ...s, phone: e.target.value }))} /></div>
-          {isSeller && <div className="field"><label>Компания / агентство</label><input className="input" value={f.company_name} onChange={(e) => setF((s) => ({ ...s, company_name: e.target.value }))} /></div>}
-          <button className="btn btn-primary" onClick={save}>Сохранить</button>
-        </div>
-        <div className="card card-pad mt-16">
-          <h3 style={{ fontSize: 16, marginBottom: 12 }}><Icon name="lock" /> Безопасность</h3>
-          <button className="btn btn-ghost" onClick={() => setPwModal(true)}>Сменить пароль</button>
-        </div>
-        <div className="card card-pad mt-16" style={{ borderColor: 'var(--danger-soft)' }}>
-          <h3 style={{ fontSize: 16, marginBottom: 8, color: 'var(--danger)' }}>Опасная зона</h3>
-          <p className="muted" style={{ fontSize: 14 }}>Удаление аккаунта необратимо.</p>
-          <button className="btn btn-danger-soft mt-8" onClick={removeAccount}>Удалить аккаунт</button>
+        </aside>
+
+        <div className="profile-main">
+          <div className="card card-pad">
+            <h3 style={{ fontSize: 16, marginBottom: 16 }}><Icon name="user" /> Личные данные</h3>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="field" style={{ margin: 0 }}><label>Имя</label><input className="input" value={f.full_name} onChange={(e) => setF((s) => ({ ...s, full_name: e.target.value }))} /></div>
+              <div className="field" style={{ margin: 0 }}><label>Телефон</label><input className="input" value={f.phone} onChange={(e) => setF((s) => ({ ...s, phone: e.target.value }))} /></div>
+              {isSeller && <div className="field" style={{ margin: 0, gridColumn: '1 / -1' }}><label>Компания / агентство</label><input className="input" value={f.company_name} onChange={(e) => setF((s) => ({ ...s, company_name: e.target.value }))} /></div>}
+            </div>
+            <button className="btn btn-primary mt-16" onClick={save}>Сохранить</button>
+          </div>
+
+          <div className="card card-pad mt-16">
+            <h3 style={{ fontSize: 16, marginBottom: 6 }}><Icon name="lock" /> Безопасность</h3>
+            <p className="muted" style={{ fontSize: 13.5, marginBottom: 12 }}>Пароль и доступ к аккаунту.</p>
+            <button className="btn btn-ghost" onClick={() => setPwModal(true)}><Icon name="key" /> Сменить пароль</button>
+          </div>
+
+          <div className="card card-pad mt-16 danger-zone">
+            <h3 style={{ fontSize: 16, marginBottom: 6, color: 'var(--danger)' }}><Icon name="alert" /> Опасная зона</h3>
+            <p className="muted" style={{ fontSize: 13.5, marginBottom: 12 }}>Удаление аккаунта необратимо. Запрос рассмотрит ИИ, на почту придёт подтверждение.</p>
+            <button className="btn btn-danger-soft" onClick={() => setDelModal(true)}><Icon name="trash" /> Удалить аккаунт</button>
+          </div>
         </div>
       </div>
       {pwModal && <PasswordModal onClose={() => setPwModal(false)} onDone={() => { logout(); nav('/auth'); }} />}
+      {delModal && <DeleteAccountModal lang={lang} onClose={() => setDelModal(false)} onDone={() => { logout(); nav('/auth'); }} />}
     </Page>
+  );
+}
+
+function DeleteAccountModal({ lang, onClose, onDone }) {
+  const toast = useToast();
+  const expected = lang === 'ru' ? 'подтверждение' : 'confirmation';
+  const [text, setText] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const matches = text.trim().toLowerCase() === expected;
+
+  async function submit() {
+    if (!matches) return;
+    setBusy(true);
+    try {
+      const res = await api.requestDeletion({ confirmation: text.trim(), reason: reason.trim() || null, lang });
+      if (res.approved) {
+        toast(lang === 'ru' ? 'Аккаунт удалён. Письмо отправлено на почту.' : 'Account deleted. A confirmation email was sent.', 'ok', 4500);
+        onDone();
+      } else {
+        toast(res.detail || (lang === 'ru' ? 'Запрос отклонён' : 'Request denied'), 'err', 5000);
+        setBusy(false);
+      }
+    } catch (e) { toast(e.message, 'err'); setBusy(false); }
+  }
+
+  return (
+    <Modal title={lang === 'ru' ? 'Удаление аккаунта' : 'Delete account'} onClose={onClose}
+      footer={<button className="btn btn-danger" disabled={!matches || busy} onClick={submit}>{busy ? <span className="spinner-sm" /> : (lang === 'ru' ? 'Удалить аккаунт' : 'Delete account')}</button>}>
+      <p className="muted mb-8">
+        {lang === 'ru'
+          ? 'Запрос рассмотрит ИИ-модератор. При одобрении аккаунт и все данные удаляются, а на вашу почту придёт письмо. Этот email можно будет снова использовать для регистрации.'
+          : 'An AI moderator reviews the request. If approved, your account and all data are deleted and a confirmation email is sent. The email can be reused to register again.'}
+      </p>
+      <div className="field">
+        <label>{lang === 'ru' ? 'Причина (необязательно)' : 'Reason (optional)'}</label>
+        <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} />
+      </div>
+      <div className="field">
+        <label>{lang === 'ru' ? `Введите «${expected}» для подтверждения` : `Type "${expected}" to confirm`}</label>
+        <input className="input" value={text} onChange={(e) => setText(e.target.value)} placeholder={expected} autoComplete="off" />
+        {text && !matches && <div className="error-text">{lang === 'ru' ? 'Текст не совпадает' : 'Text does not match'}</div>}
+      </div>
+    </Modal>
   );
 }
 

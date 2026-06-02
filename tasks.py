@@ -65,16 +65,29 @@ def process_spatial_qa(self, qa_id: int) -> dict:
         try:
             if not is_configured():
                 raise AIError("AI not configured")
+            # Infer answer language from the question (Cyrillic => Russian).
+            lang = "ru" if any("\u0400" <= ch <= "\u04FF" for ch in (qa.question or "")) else "en"
+            lang_name = "Russian" if lang == "ru" else "English"
             image_b64 = _read_image_b64(qa.image_url)
             if image_b64:
-                answer = ask_with_image(image_b64, qa.question, metadata)
+                answer = ask_with_image(image_b64, qa.question, metadata, lang=lang)
             else:
-                # No screenshot — fall back to a metadata-only text answer.
+                # No screenshot — answer from metadata only, but stay honest about it.
                 answer = chat(
                     [
-                        {"role": "system", "content": "You are a real-estate expert answering about a specific zone of a property."},
-                        {"role": "user", "content": f"Property: {json.dumps(metadata)}. Question: {qa.question}"},
-                    ]
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a property surveyor answering about a specific zone of a "
+                                "listing. No photo is available, so answer from the metadata and "
+                                "general domain knowledge, and clearly note that no image was "
+                                f"provided. Reply in {lang_name}, 2-4 sentences, specific, no filler."
+                            ),
+                        },
+                        {"role": "user", "content": f"Property: {json.dumps(metadata, ensure_ascii=False)}\nQuestion: {qa.question}"},
+                    ],
+                    max_tokens=400,
+                    timeout=25.0,
                 )
             qa.answer = answer or "No answer produced."
             qa.status = "done"

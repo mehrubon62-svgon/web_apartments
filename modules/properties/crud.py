@@ -94,6 +94,9 @@ def search_properties(
     only_active: bool = True,
     limit: int = 20,
     offset: int = 0,
+    seed: int | None = None,
+    sort_by: str | None = None,
+    order: str | None = None,
 ):
     q = _base_query(db)
     if only_active:
@@ -114,6 +117,27 @@ def search_properties(
         q = q.filter(Property.area <= max_area)
     if rooms is not None:
         q = q.filter(Property.rooms == rooms)
+
+    # Explicit sort (e.g. cheapest/largest first) takes precedence over the
+    # seed shuffle and the default newest-first ordering.
+    if sort_by in ("price", "area"):
+        col = Property.price if sort_by == "price" else Property.area
+        col = col.asc() if (order or "asc").lower() == "asc" else col.desc()
+        q = q.order_by(col)
+        total = q.count()
+        items = q.offset(offset).limit(limit).all()
+        return items, total
+
+    if seed is not None:
+        # Shuffle deterministically by seed so the order varies per page-load
+        # but stays stable across paginated "show more" requests (no dupes).
+        import random as _random
+        rows = q.all()
+        _random.Random(seed).shuffle(rows)
+        total = len(rows)
+        items = rows[offset:offset + limit]
+        return items, total
+
     q = q.order_by(Property.created_at.desc())
     total = q.count()
     items = q.offset(offset).limit(limit).all()
@@ -278,6 +302,18 @@ def avg_rating(db: Session, property_id: int) -> float | None:
         .scalar()
     )
     return round(float(value), 2) if value is not None else None
+
+
+def seller_rating(db: Session, seller_id: int) -> tuple[float | None, int]:
+    """Average rating + review count across ALL of a seller's listings."""
+    row = (
+        db.query(func.avg(Review.rating), func.count(Review.id))
+        .join(Property, Property.id == Review.property_id)
+        .filter(Property.seller_id == seller_id)
+        .first()
+    )
+    avg, cnt = (row or (None, 0))
+    return (round(float(avg), 2) if avg is not None else None), int(cnt or 0)
 
 
 def increment_views(db: Session, prop: Property) -> None:

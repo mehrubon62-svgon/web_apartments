@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from models import get_db, User, EmailCodePurpose
@@ -418,11 +419,12 @@ def seller_reviews(
     """
     from models import Property, Review, DealType
     from sqlalchemy.orm import selectinload
+    from modules.properties.crud import cover_url
 
     q = (
         db.query(Review, Property)
         .join(Property, Property.id == Review.property_id)
-        .options(selectinload(Review.user))
+        .options(selectinload(Review.user), selectinload(Property.media))
         .filter(Property.seller_id == user_id)
     )
     if deal_type in ("rent", "sale"):
@@ -442,6 +444,116 @@ def seller_reviews(
                 "avatar_url": review.user.avatar_url,
                 "role": review.user.role.value,
             } if review.user else None,
-            "property": {"id": prop.id, "title": prop.title, "deal_type": prop.deal_type.value},
+            "property": {
+                "id": prop.id,
+                "title": prop.title,
+                "deal_type": prop.deal_type.value,
+                "type": prop.type.value,
+                "price": prop.price,
+                "cover_url": cover_url(prop),
+            },
         })
     return {"items": out, "total": len(out)}
+
+
+# ---- Account deletion (AI-reviewed) ----
+
+class DeleteAccountRequest(BaseModel):
+    confirmation: str
+    reason: str | None = None
+    lang: str = "ru"
+
+
+@users_router.post("/me/request-deletion")
+def request_account_deletion(
+    data: "DeleteAccountRequest",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Submit an account-deletion request that an AI reviews and (almost always)
+    approves. On approval the account + all related data are deleted and a
+    confirmation email is sent. The email can be reused to register again later.
+
+    The frontend must send the typed confirmation word ('подтверждение' for ru,
+    'confirmation' for en) — validated here as a safety gate.
+    """
+    expected = "подтверждение" if data.lang == "ru" else "confirmation"
+    if (data.confirmation or "").strip().lower() != expected:
+        raise HTTPException(status_code=400, detail="Confirmation text does not match")
+
+    # AI moderation of the deletion request (lenient — approves almost always).
+    decision, ai_note = _review_deletion(data.reason or "", data.lang)
+    if decision != "approve":
+        return {"approved": False, "detail": ai_note}
+
+    email = user.email
+    full_name = user.full_name or email
+
+    # Send confirmation email (best-effort, non-blocking).
+    _send_deletion_email(email, full_name, data.lang)
+
+    # Hard-delete the account and all related data (cascades).
+    revoke_all_user_tokens(db, user.id)
+    db.delete(user)
+    db.commit()
+    return {"approved": True, "detail": ai_note or "Account deleted"}
+
+
+def _review_deletion(reason: str, lang: str) -> tuple[str, str]:
+    """Ask the AI to review a deletion request. Designed to approve in almost all
+    cases; only blocks obviously abusive/automated spam. Falls back to approve
+    if AI is unavailable."""
+    try:
+        from modules.ai.service import chat, is_configured, AIError
+        if not is_configured():
+            return "approve", ("Запрос одобрен." if lang == "ru" else "Request approved.")
+        lang_name = "Russian" if lang == "ru" else "English"
+        prompt = (
+            "You moderate account-deletion requests for a real-estate app. Users have the right "
+            "to delete their account; APPROVE unless the request is clearly abusive, automated "
+            "spam, or attempts something other than deleting one's own account. When in doubt, "
+            "approve.\n"
+            f"Reply in {lang_name} with STRICT JSON only: "
+            '{"decision":"approve|deny","note":"one short sentence to the user"}\n'
+            f"Reason given: {reason!r}"
+        )
+        import json as _json
+        raw = chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=120, timeout=15.0)
+        s, e = raw.find("{"), raw.rfind("}")
+        obj = _json.loads(raw[s:e + 1]) if s != -1 and e != -1 else {}
+        decision = str(obj.get("decision", "approve")).lower()
+        note = str(obj.get("note", "")).strip()
+        if decision not in ("approve", "deny"):
+            decision = "approve"
+        if not note:
+            note = ("Запрос одобрен." if lang == "ru" else "Request approved.")
+        return decision, note
+    except Exception:
+        return "approve", ("Запрос одобрен." if lang == "ru" else "Request approved.")
+
+
+def _send_deletion_email(email: str, name: str, lang: str) -> None:
+    def _worker():
+        try:
+            from modules.email.service import send_email
+            if lang == "ru":
+                subject = "Ваш аккаунт Nestora удалён"
+                text = (
+                    f"Здравствуйте, {name}!\n\n"
+                    "Ваш запрос на удаление аккаунта одобрен, и аккаунт удалён вместе со всеми данными.\n"
+                    "Вы можете в любой момент снова зарегистрироваться на этот же email.\n\n"
+                    "С уважением, команда Nestora."
+                )
+            else:
+                subject = "Your Nestora account has been deleted"
+                text = (
+                    f"Hello {name},\n\n"
+                    "Your account-deletion request was approved and your account and all data were removed.\n"
+                    "You are welcome to register again with this same email at any time.\n\n"
+                    "Best, the Nestora team."
+                )
+            send_email(email, subject, text, None)
+        except Exception:
+            pass
+    import threading
+    threading.Thread(target=_worker, daemon=True).start()

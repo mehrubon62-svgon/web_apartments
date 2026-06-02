@@ -3,6 +3,7 @@ import { useApp } from './lib/store.jsx';
 import { Layout } from './components/Layout.jsx';
 import { Spinner } from './components/Common.jsx';
 import { Translator } from './lib/Translator.jsx';
+import { ScrollManager } from './lib/ScrollManager.jsx';
 
 import { CatalogPage, SearchPage } from './pages/Catalog.jsx';
 import { PropertyPage } from './pages/Property.jsx';
@@ -26,6 +27,7 @@ export function App() {
   return (
     <>
       <Translator />
+      <ScrollManager />
       <Routes>
       <Route path="/auth" element={<AuthPage />} />
       <Route element={<Layout />}>

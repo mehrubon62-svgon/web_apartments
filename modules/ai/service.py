@@ -132,18 +132,27 @@ def ask_with_image(
     question: str,
     metadata: dict[str, Any] | None = None,
     media_type: str = "image/jpeg",
+    lang: str = "en",
 ) -> str:
     """Vision call. `image_b64` is base64-encoded image bytes (no data: prefix)."""
     context = ""
     if metadata:
-        context = "Property context:\n" + json.dumps(metadata, ensure_ascii=False) + "\n\n"
+        context = "Property context (JSON): " + json.dumps(metadata, ensure_ascii=False) + "\n\n"
+    lang_name = "Russian" if lang == "ru" else "English"
     content = [
         {
             "type": "text",
             "text": (
-                f"{context}You are a real-estate expert. The user selected a zone in a "
-                f"360° tour. Answer specifically about that zone (materials, approximate "
-                f"dimensions, condition, replacement cost). Question: {question}"
+                f"{context}"
+                "You are a property surveyor. The user outlined a rectangular zone in a 360° "
+                "tour photo and asks about THAT zone only. Answer strictly from what is visible "
+                "in the image plus the property context — never invent details you cannot see.\n"
+                "Cover, when visible and relevant: materials/finish, approximate dimensions, "
+                "visible condition or wear, and a rough replacement/renovation cost range. "
+                "If something is not visible, say so briefly instead of guessing.\n"
+                f"Answer in {lang_name}, 2-4 sentences, specific and practical, no filler, no "
+                "generic disclaimers. Stay on this zone; ignore unrelated parts of the image.\n"
+                f"Question: {question}"
             ),
         },
         {
@@ -155,9 +164,10 @@ def ask_with_image(
         {
             "model": AI_VISION_MODEL,
             "messages": [{"role": "user", "content": content}],
-            "max_tokens": AI_MAX_TOKENS,
+            "max_tokens": 400,
             "temperature": 0.3,
-        }
+        },
+        timeout=30.0,
     )
     return _first_text(data)
 

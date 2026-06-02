@@ -7,6 +7,9 @@ import { I18nProvider } from './lib/i18n.jsx';
 import { ToastProvider } from './lib/toast.jsx';
 import { App } from './App.jsx';
 
+// We manage scroll position ourselves (see ScrollManager).
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>

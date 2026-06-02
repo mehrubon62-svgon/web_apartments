@@ -11,6 +11,8 @@ from modules.recommendations.crud import (
     compute_recommendations,
     ai_rerank,
 )
+from models import Property, PropertyStatus
+from sqlalchemy.orm import selectinload
 from modules.ratelimit.limiter import rate_limit
 
 
@@ -25,9 +27,21 @@ def my_recommendations(
 ):
     """Personalized suggestions based on viewing history + favorites.
 
-    Fast path: content-based algorithm (+ Redis cache from the Celery task).
+    Computed fresh on each call with weighted randomization, so the set rotates
+    on every refresh while staying relevant.
     """
-    props = load_recommended_properties(db, current_user.id, limit)
+    ids = compute_recommendations(db, current_user.id, limit, shuffle=True)
+    if ids:
+        props = (
+            db.query(Property)
+            .options(selectinload(Property.seller), selectinload(Property.media))
+            .filter(Property.id.in_(ids), Property.status == PropertyStatus.active)
+            .all()
+        )
+        order = {pid: i for i, pid in enumerate(ids)}
+        props.sort(key=lambda p: order.get(p.id, 999))
+    else:
+        props = []
     return PropertyList(
         items=[serialize(db, p, current_user.id) for p in props],
         total=len(props),
@@ -49,6 +63,7 @@ class AIRecommendationList(BaseModel):
 def ai_recommendations(
     limit: int = Query(10, le=30),
     query: str | None = Query(None, description="Optional natural-language hint, e.g. 'best for a family with kids'"),
+    lang: str = Query("en", description="Explanation language: ru | en"),
     db: Session = Depends(get_db),
     current_user: User = Depends(rate_limit("recommend_ai")),
 ):
@@ -60,7 +75,7 @@ def ai_recommendations(
     """
     # Pull a slightly larger candidate set so the LLM has room to reorder.
     candidate_ids = compute_recommendations(db, current_user.id, limit=max(limit * 2, 10))
-    rerank = ai_rerank(db, current_user.id, candidate_ids, query=query)
+    rerank = ai_rerank(db, current_user.id, candidate_ids, query=query, lang="ru" if lang == "ru" else "en")
 
     ai_used = rerank is not None
     if rerank:

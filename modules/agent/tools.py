@@ -30,7 +30,14 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_properties",
-            "description": "Search active property listings by filters. Use for queries like 'apartments under $500k near downtown'.",
+            "description": (
+                "Search active property listings by filters and sorting. Use for queries like "
+                "'apartments under $500k', 'cheapest houses', 'biggest rentals'. To find the "
+                "most affordable/cheapest, set sort_by='price' and order='asc' WITHOUT a "
+                "max_price. To find premium/expensive, use order='desc'. For largest, "
+                "sort_by='area' order='desc'. Only set max_price/min_price when the user gives "
+                "an explicit number."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -40,6 +47,8 @@ TOOLS: list[dict[str, Any]] = [
                     "min_price": {"type": "number"},
                     "min_area": {"type": "number"},
                     "rooms": {"type": "integer"},
+                    "sort_by": {"type": "string", "enum": ["price", "area"], "description": "Field to sort by"},
+                    "order": {"type": "string", "enum": ["asc", "desc"], "description": "asc = cheapest/smallest first, desc = most expensive/largest first"},
                     "limit": {"type": "integer", "description": "Max results (default 5)"},
                 },
             },
@@ -192,6 +201,8 @@ def _t_search(db, user_id, args):
         max_price=args.get("max_price"),
         min_area=args.get("min_area"),
         rooms=args.get("rooms"),
+        sort_by=args.get("sort_by"),
+        order=args.get("order"),
         limit=min(int(args.get("limit", 5)), 20),
     )
     return {"total": total, "results": [_serialize_brief(p) for p in items]}

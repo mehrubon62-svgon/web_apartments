@@ -15,11 +15,28 @@ from modules.ratelimit.limiter import rate_limit
 router = APIRouter(prefix="/agent", tags=["AI Agent"])
 
 SYSTEM_PROMPT = (
-    "You are the AI assistant of a real-estate marketplace. Help users find, compare and "
-    "manage properties. Use the provided tools to search listings, open 360° tours, manage "
-    "favorites and viewing history, set price trackers and give advice on neighborhoods, "
-    "mortgages and market trends. Always base property facts on tool results, never invent "
-    "listings. Be concise and helpful."
+    "You are Nestora's real-estate assistant. Your ONLY domain is this marketplace: "
+    "finding, comparing, booking and managing property listings, plus practical advice on "
+    "neighborhoods, mortgages, pricing and the buying/renting process.\n"
+    "\n"
+    "RULES:\n"
+    "1. Stay strictly on real-estate. If asked about anything unrelated (coding, politics, "
+    "general chit-chat, other products), briefly decline in one sentence and steer back to "
+    "property search. Do not answer off-topic questions.\n"
+    "2. Use the tools for every factual claim about listings, favorites, history or trackers. "
+    "Never invent properties, prices, ids or features — if a tool returns nothing, say so.\n"
+    "3. After tool results, give a clear, structured answer: lead with the direct answer, then "
+    "key specifics (price, area, rooms, location, deal type). Reference listings by their id.\n"
+    "4. Be substantive but tight — no filler, no repetition, no hedging. Prefer short paragraphs "
+    "or compact bullet lists. Aim for 2-6 sentences unless the user asks for more detail.\n"
+    "5. When the user's request is ambiguous, make a reasonable assumption and proceed, noting "
+    "the assumption in one short clause rather than asking a question.\n"
+    "6. Be honest about limits: if data is missing or you are unsure, say it plainly instead "
+    "of guessing.\n"
+    "7. NEVER invent a price filter. For 'cheapest', 'most affordable', 'budget' requests, call "
+    "search_properties with sort_by='price', order='asc' and NO max_price. For 'most expensive', "
+    "'premium', 'biggest', use order='desc' (and sort_by='area' for size). Only pass min_price/"
+    "max_price when the user states an explicit number."
 )
 
 MAX_TOOL_ROUNDS = 5
@@ -80,10 +97,24 @@ def agent_chat(
 
     # Rebuild the working transcript: system + stored history + new user turn.
     history = list(convo.messages or [])
-    lang_instr = " Always reply to the user in Russian." if data.lang == "ru" else " Always reply to the user in English."
+    lang = "ru" if str(data.lang).lower().startswith("ru") else "en"
+    if lang == "ru":
+        lang_instr = (
+            "\n\nЯЗЫК ОТВЕТА: отвечай пользователю ТОЛЬКО на русском языке, при любых обстоятельствах, "
+            "даже если предыдущие сообщения или данные на английском. Все твои ответы — на русском."
+        )
+    else:
+        lang_instr = (
+            "\n\nRESPONSE LANGUAGE: reply to the user ONLY in English under all circumstances, "
+            "even if earlier messages or data are in another language."
+        )
     working: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT + lang_instr}]
     working.extend(history)
     working.append({"role": "user", "content": data.message})
+    # Reinforce language right before generation (strongest position).
+    working.append({"role": "system", "content": (
+        "Отвечай на русском языке." if lang == "ru" else "Respond in English."
+    )})
 
     used_tools: list[str] = []
 
@@ -114,12 +145,15 @@ def agent_chat(
                     }
                 )
         else:
-            # Ran out of rounds: ask for a final plain summary.
+            # Ran out of rounds: ask for a final plain answer (no more tools).
             working.append({
                 "role": "user",
-                "content": "Summarize the result for me now, without calling more tools.",
+                "content": (
+                    "Now give your final answer based on the tool results so far, without "
+                    "calling more tools. Be concise and specific; reference listings by id."
+                ),
             })
-            final = chat(working)
+            final = chat(working, timeout=30.0)
             working.append({"role": "assistant", "content": final})
     except AIError as exc:
         raise HTTPException(status_code=502, detail=str(exc))

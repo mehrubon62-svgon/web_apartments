@@ -34,6 +34,7 @@ from modules.properties.schemas import (
     ComparisonRow,
     ComparisonResult,
     AIReviewResult,
+    TranslationResult,
 )
 from modules.properties.crud import (
     create_property,
@@ -47,6 +48,7 @@ from modules.properties.crud import (
     cover_url,
     is_favorited,
     avg_rating,
+    seller_rating,
     increment_views,
 )
 
@@ -55,6 +57,10 @@ router = APIRouter(prefix="/properties", tags=["Properties"])
 
 
 def serialize(db: Session, prop: Property, user_id: int | None) -> PropertyOut:
+    # Seller's aggregate rating — relevant for sale listings (shown on cards/detail).
+    s_avg, s_cnt = (None, 0)
+    if prop.deal_type == DealType.sale and prop.seller_id:
+        s_avg, s_cnt = seller_rating(db, prop.seller_id)
     return PropertyOut(
         id=prop.id,
         seller=prop.seller,
@@ -78,6 +84,8 @@ def serialize(db: Session, prop: Property, user_id: int | None) -> PropertyOut:
         has_tour=has_tour(db, prop.id),
         is_favorited=is_favorited(db, user_id, prop.id) if user_id else False,
         avg_rating=avg_rating(db, prop.id),
+        seller_rating=s_avg,
+        seller_reviews_count=s_cnt,
     )
 
 
@@ -94,6 +102,7 @@ def list_properties(
     rooms: int | None = None,
     limit: int = Query(20, le=100),
     offset: int = 0,
+    seed: int | None = Query(None, description="Shuffle seed; pass a value to randomize order per page-load"),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
@@ -108,6 +117,7 @@ def list_properties(
         rooms=rooms,
         limit=limit,
         offset=offset,
+        seed=seed,
     )
     return PropertyList(
         items=[serialize(db, p, current_user.id if current_user else None) for p in items],
@@ -356,6 +366,25 @@ def ai_review(
         raise HTTPException(status_code=404, detail="Property not found")
     result = review_property(db, prop, lang="ru" if lang == "ru" else "en")
     return AIReviewResult(**result)
+
+
+@router.get("/{property_id}/translate", response_model=TranslationResult)
+def translate_listing(
+    property_id: int,
+    lang: str = Query("ru", description="Target language: ru | en"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(rate_limit("translate")),
+):
+    """Translate a listing's title + description into the requested language using
+    AI. If the text already appears to be in the target language, it's returned
+    unchanged (translated=false)."""
+    from modules.properties.translate import translate_property
+
+    prop = get_property(db, property_id)
+    if not prop or prop.status == PropertyStatus.deleted:
+        raise HTTPException(status_code=404, detail="Property not found")
+    target = "ru" if lang == "ru" else "en"
+    return TranslationResult(**translate_property(prop, target))
 
 
 @router.get("/{property_id}/similar", response_model=PropertyList)

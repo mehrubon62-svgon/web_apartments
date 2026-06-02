@@ -67,11 +67,25 @@ def _compute_review(db: Session, prop: Property, lang: str = "en") -> dict:
 
     lang_name = "Russian" if lang == "ru" else "English"
     prompt = (
-        "Real-estate analyst. Judge ONE listing using the market stats. "
-        "Far below comparables = scam signal; well above = overpriced.\n"
-        f"Write summary/pros/cons/red_flags in {lang_name}. Be terse: summary <=12 words, "
-        "<=2 items per list, each <=6 words.\n"
-        'JSON only: {"verdict":"great_deal|fair|overpriced|suspicious|likely_scam|insufficient_data",'
+        "You are a property valuation analyst. Assess ONE listing for value and fraud risk "
+        "using the market stats provided. Judge ONLY from the given data — never invent facts.\n"
+        "\n"
+        "How to decide:\n"
+        "- price_ratio_vs_median tells how this price compares to similar active listings.\n"
+        "- Far BELOW market (ratio <= ~0.6) => strong scam signal: verdict 'likely_scam' or "
+        "'suspicious', scam_risk high.\n"
+        "- Moderately below market with no red flags => 'great_deal'.\n"
+        "- Near market (~0.9-1.1) => 'fair'. Clearly above (ratio >= ~1.25) => 'overpriced'.\n"
+        "- Missing description or coordinates raises risk slightly.\n"
+        "- If comparables_count is 0, use 'insufficient_data' and scam_risk 'unknown'.\n"
+        "deal_score: 0-100 where higher = better value for the buyer.\n"
+        "\n"
+        f"Write summary/pros/cons/red_flags in {lang_name}. Be specific and useful, not generic: "
+        "cite the concrete numbers (price vs median, price per m²). No filler.\n"
+        "Limits: summary <= 18 words; <= 3 items per list; each item <= 8 words; "
+        "red_flags only when genuinely warranted (else empty).\n"
+        "Return STRICT JSON only, no prose, no markdown:\n"
+        '{"verdict":"great_deal|fair|overpriced|suspicious|likely_scam|insufficient_data",'
         '"deal_score":0-100,"scam_risk":"low|medium|high|unknown",'
         '"summary":"","pros":[],"cons":[],"red_flags":[]}\n'
         f"Listing: {json.dumps(listing, ensure_ascii=False)}\n"
@@ -82,7 +96,7 @@ def _compute_review(db: Session, prop: Property, lang: str = "en") -> dict:
         # Tight token budget + low temp + short timeout => fast first response.
         raw = chat(
             [{"role": "user", "content": prompt}],
-            temperature=0.1, model=AI_RECOMMEND_MODEL, max_tokens=260, timeout=20.0,
+            temperature=0.1, model=AI_RECOMMEND_MODEL, max_tokens=320, timeout=20.0,
         )
         parsed = _parse(raw)
     except AIError:

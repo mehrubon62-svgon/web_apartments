@@ -89,6 +89,7 @@ export const api = {
   updateMe: (b) => req('PUT', '/users/me', { body: b }),
   changePassword: (b) => req('POST', '/users/me/change-password', { body: b }),
   deleteMe: () => req('DELETE', '/users/me'),
+  requestDeletion: (b) => req('POST', '/users/me/request-deletion', { body: b }),
   uploadAvatar: (fd) => req('POST', '/users/me/avatar', { body: fd, isForm: true }),
   publicProfile: (id) => req('GET', `/users/${id}/public`),
   sellerListings: (id, params) => req('GET', `/users/${id}/listings`, { params }),
@@ -105,6 +106,7 @@ export const api = {
   compare: (ids) => req('GET', '/properties/compare', { params: { ids } }),
   similar: (id, limit) => req('GET', `/properties/${id}/similar`, { params: { limit } }),
   aiReview: (id, lang) => req('GET', `/properties/${id}/ai-review`, { params: { lang } }),
+  translateListing: (id, lang) => req('GET', `/properties/${id}/translate`, { params: { lang } }),
   priceHistory: (id) => req('GET', `/properties/${id}/price-history`),
   mortgage: (id, b) => req('POST', `/properties/${id}/mortgage`, { body: b }),
   reviews: (id) => req('GET', `/properties/${id}/reviews`),
@@ -154,6 +156,8 @@ export const api = {
   aiRecommendations: (params) => req('GET', '/recommendations/ai', { params }),
 
   agentChat: (b) => req('POST', '/agent/chat', { body: b }),
+  agentConversations: () => req('GET', '/agent/conversations'),
+  deleteAgentConversation: (id) => req('DELETE', `/agent/conversations/${id}`),
 
   submitComplaint: (b) => req('POST', '/complaints', { body: b }),
 

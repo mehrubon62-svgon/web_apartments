@@ -13,18 +13,20 @@ export function PropertyPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user } = useApp();
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
+  const toast = useToast();
   const [p, setP] = useState(undefined);
   const [tab, setTab] = useState('desc');
   const [modal, setModal] = useState(null);
   const [aiPrefetch, setAiPrefetch] = useState(null);
+  const [translation, setTranslation] = useState(null);   // {title, description, translated}
+  const [translating, setTranslating] = useState(false);
 
   useEffect(() => {
-    setP(undefined); setTab('desc'); setAiPrefetch(null);
+    setP(undefined); setTab('desc'); setAiPrefetch(null); setTranslation(null);
     api.getProperty(id).then(setP).catch(() => setP(null));
     // Warm the AI review in the background so the tab is instant when opened.
     api.aiReview(id, lang).then(setAiPrefetch).catch(() => {});
-    window.scrollTo(0, 0);
   }, [id, lang]);
 
   if (p === undefined) return <div className="page"><div className="container"><Spinner big /></div></div>;
@@ -43,6 +45,20 @@ export function PropertyPage() {
     ['similar', 'Похожие'],
   ].filter(Boolean);
 
+  async function toggleTranslate() {
+    if (translation) { setTranslation(null); return; }  // show original again
+    setTranslating(true);
+    try {
+      const r = await api.translateListing(id, lang);
+      if (r.translated) setTranslation(r);
+      else toast(lang === 'ru' ? 'Уже на русском' : 'Already in English', 'info');
+    } catch (e) { toast(e.message, 'err'); }
+    finally { setTranslating(false); }
+  }
+
+  const shownTitle = translation ? translation.title : p.title;
+  const shownDesc = translation ? translation.description : p.description;
+
   return (
     <div className="page">
       <div className="container">
@@ -59,13 +75,19 @@ export function PropertyPage() {
                 {p.rent_term && <span className="tag tag-muted">{TERM_LABELS[p.rent_term]}</span>}
                 {p.has_tour && <span className="tag tag-ok"><Icon name="globe" /> 360° тур</span>}
               </div>
-              <h1 className="page-title" style={{ fontSize: 28 }}>{p.title}</h1>
+              <div className="row-between wrap" style={{ gap: 10 }}>
+                <h1 className="page-title" style={{ fontSize: 28 }}>{shownTitle}</h1>
+                <button className="btn btn-ghost btn-sm" onClick={toggleTranslate} disabled={translating}>
+                  {translating ? <span className="spinner-sm" /> : <Icon name="globe" />}
+                  {translation ? (lang === 'ru' ? ' Оригинал' : ' Original') : (lang === 'ru' ? ' Перевести' : ' Translate')}
+                </button>
+              </div>
               <p className="page-sub">{p.address || 'Адрес не указан'}</p>
 
               <div className="tabs" style={{ marginTop: 22 }}>
                 {tabs.map(([k, l]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>)}
               </div>
-              <TabContent tab={tab} p={p} aiPrefetch={aiPrefetch} onChanged={() => api.getProperty(id).then(setP)} />
+              <TabContent tab={tab} p={p} desc={shownDesc} aiPrefetch={aiPrefetch} onChanged={() => api.getProperty(id).then(setP)} />
             </div>
           </div>
           <Sidebar p={p} isOwner={isOwner} user={user} setModal={setModal} />
@@ -94,10 +116,10 @@ function Gallery({ p, photos }) {
   );
 }
 
-function TabContent({ tab, p, aiPrefetch, onChanged }) {
+function TabContent({ tab, p, desc, aiPrefetch, onChanged }) {
   if (tab === 'desc') return (
     <div className="card card-pad">
-      <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{p.description || 'Описание отсутствует.'}</p>
+      <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{(desc ?? p.description) || 'Описание отсутствует.'}</p>
       {p.house_rules && <div className="mt-16"><h3 style={{ fontSize: 16, marginBottom: 8 }}>Правила дома</h3><p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{p.house_rules}</p></div>}
     </div>
   );
@@ -297,6 +319,16 @@ function Sidebar({ p, isOwner, user, setModal }) {
   const nav = useNavigate();
   const toast = useToast();
   const [fav, setFav] = useState(!!p.is_favorited);
+  // For sale listings the sidebar shows the SELLER's overall rating, not the
+  // property's. Fetch it from the seller's public profile.
+  const [sellerRating, setSellerRating] = useState(undefined);
+  useEffect(() => {
+    if (p.deal_type === 'sale' && p.seller) {
+      api.publicProfile(p.seller.id)
+        .then((pr) => setSellerRating({ avg: pr.avg_rating, count: pr.reviews_count }))
+        .catch(() => setSellerRating({ avg: null, count: 0 }));
+    }
+  }, [p.id]);
   const requireAuth = () => { if (!user) { toast('Войдите, чтобы продолжить', 'info'); nav('/auth'); return false; } return true; };
 
   async function toggleFav() {
@@ -317,7 +349,10 @@ function Sidebar({ p, isOwner, user, setModal }) {
           {p.rooms != null && <Fact k="Комнат" v={p.rooms} />}
           <Fact k="Цена за м²" v={money(p.area ? p.price / p.area : 0)} />
           <Fact k="Просмотров" v={p.views_count} />
-          {p.avg_rating ? <div className="fact-row"><span className="k">Рейтинг</span><span className="v" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><Stars rating={Math.round(p.avg_rating)} size={14} /> {p.avg_rating.toFixed(1)}</span></div> : null}
+          {p.deal_type === 'sale'
+            ? <RatingRow label="Рейтинг продавца" rating={sellerRating === undefined ? undefined : sellerRating.avg} count={sellerRating?.count} />
+            : (p.avg_rating ? <RatingRow label="Рейтинг" rating={p.avg_rating} />
+              : <div className="fact-row"><span className="k">Рейтинг</span><span className="v muted">Нет отзывов</span></div>)}
         </div>
       </div>
 
@@ -354,6 +389,20 @@ function Sidebar({ p, isOwner, user, setModal }) {
   );
 }
 function Fact({ k, v }) { return <div className="fact-row"><span className="k">{k}</span><span className="v">{String(v)}</span></div>; }
+function RatingRow({ label, rating, count }) {
+  return (
+    <div className="fact-row">
+      <span className="k">{label}</span>
+      {rating === undefined
+        ? <span className="v muted">…</span>
+        : rating == null
+          ? <span className="v muted">Нет отзывов</span>
+          : <span className="v" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              <Stars rating={Math.round(rating)} size={14} /> {rating.toFixed(1)}{count != null && <span className="muted" style={{ fontWeight: 400 }}>({count})</span>}
+            </span>}
+    </div>
+  );
+}
 
 function MiniMap({ p }) {
   useEffect(() => {
