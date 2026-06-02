@@ -17,7 +17,7 @@ from models import (
     PropertyType,
     PriceTracker,
 )
-from modules.properties.crud import search_properties, get_property
+from modules.properties.crud import search_properties, get_property, cover_url, has_tour
 from modules.favorites.crud import add_favorite, list_favorites
 from modules.history.crud import list_history, clear_history
 from modules.recommendations.crud import load_recommended_properties
@@ -170,6 +170,20 @@ def _serialize_brief(p: Property) -> dict:
         "rooms": p.rooms,
         "address": p.address,
     }
+
+
+def _serialize_card(db: Session, p: Property) -> dict:
+    """Richer payload used to render a clickable listing card in the chat UI."""
+    d = _serialize_brief(p)
+    try:
+        d["cover_url"] = cover_url(p)
+    except Exception:
+        d["cover_url"] = None
+    try:
+        d["has_tour"] = has_tour(db, p.id)
+    except Exception:
+        d["has_tour"] = False
+    return d
 
 
 def _enum(value, enum_cls):
