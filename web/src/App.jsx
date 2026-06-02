@@ -11,6 +11,7 @@ import { MapPage } from './pages/MapPage.jsx';
 import { TourPage } from './pages/Tour.jsx';
 import { AgentPage } from './pages/Agent.jsx';
 import { AboutPage } from './pages/About.jsx';
+import { ComparePage } from './pages/Compare.jsx';
 import { MessagesPage } from './pages/Messages.jsx';
 import { AuthPage } from './pages/Auth.jsx';
 import {
@@ -37,6 +38,7 @@ export function App() {
         <Route path="/map" element={<MapPage />} />
         <Route path="/agent" element={<AgentPage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/compare" element={<ComparePage />} />
         <Route path="/recommendations" element={<RecommendationsPage />} />
         <Route path="/properties/:id" element={<PropertyPage />} />
         <Route path="/properties/:id/tour" element={<TourPage />} />

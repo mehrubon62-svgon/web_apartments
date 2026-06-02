@@ -3,15 +3,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 /* ============================================================
-   Real 3D hero — a detailed, draggable house (Three.js).
-   - Grab & rotate with the mouse / touch (OrbitControls, damped)
-   - Auto-spins gently until the user interacts
-   - Detailed model: stone base, two-tone walls, gable roof,
-     lit windows, door, chimney, porch, trees, ground
-   - Orbiting brand-colored lights + soft shadows
-   - Floating crystals + starfield around the scene
-   Cleans up fully. Honors prefers-reduced-motion.
+   3D hero — translucent glass house with glowing edges.
+   Draggable (OrbitControls). The camera orientation is persisted
+   to localStorage, so after a page reload the house keeps the
+   same rotation/zoom the user left it at.
    ============================================================ */
+const VIEW_KEY = 'nestora_hero3d_view';
+
 export function Hero3D() {
   const mountRef = useRef(null);
 
@@ -24,7 +22,6 @@ export function Hero3D() {
     const BRAND = new THREE.Color(css.getPropertyValue('--brand').trim() || '#c2502e');
     const ACCENT = new THREE.Color(css.getPropertyValue('--accent').trim() || '#1f5c4d');
     const GOLD = new THREE.Color(css.getPropertyValue('--gold').trim() || '#b8862f');
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
     let w = mount.clientWidth, h = mount.clientHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -32,16 +29,13 @@ export function Hero3D() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-    camera.position.set(7, 5, 9);
+    const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 100);
+    camera.position.set(0, 1.2, 12);
 
-    // ---- controls: grab & rotate ----
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
@@ -49,193 +43,142 @@ export function Hero3D() {
     controls.enableZoom = true;
     controls.minDistance = 7;
     controls.maxDistance = 18;
-    controls.minPolarAngle = 0.55;
-    controls.maxPolarAngle = Math.PI / 2 - 0.02; // never go under the ground
     controls.autoRotate = !reduced;
     controls.autoRotateSpeed = 1.1;
-    controls.target.set(0, 1.1, 0);
-    // stop auto-rotate once the user grabs it
-    controls.addEventListener('start', () => { controls.autoRotate = false; });
+    controls.target.set(0, 0.4, 0);
+
+    // ---- restore saved view (rotation + zoom) ----
+    let userInteracted = false;
+    try {
+      const saved = JSON.parse(localStorage.getItem(VIEW_KEY));
+      if (saved && Number.isFinite(saved.az) && Number.isFinite(saved.pol) && Number.isFinite(saved.dist)) {
+        const r = saved.dist;
+        const pol = saved.pol, az = saved.az;
+        camera.position.set(
+          controls.target.x + r * Math.sin(pol) * Math.sin(az),
+          controls.target.y + r * Math.cos(pol),
+          controls.target.z + r * Math.sin(pol) * Math.cos(az),
+        );
+        controls.update();
+        controls.autoRotate = false;   // respect the user's saved angle
+        userInteracted = true;
+      }
+    } catch {}
+
+    let saveTimer = null;
+    function saveView() {
+      if (saveTimer) return;
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        try {
+          localStorage.setItem(VIEW_KEY, JSON.stringify({
+            az: controls.getAzimuthalAngle(),
+            pol: controls.getPolarAngle(),
+            dist: camera.position.distanceTo(controls.target),
+          }));
+        } catch {}
+      }, 200);
+    }
+    controls.addEventListener('start', () => { controls.autoRotate = false; userInteracted = true; });
+    controls.addEventListener('change', saveView);
 
     // ---- lights ----
-    scene.add(new THREE.AmbientLight(0xffffff, isDark ? 0.45 : 0.7));
-    const sun = new THREE.DirectionalLight(0xfff4e6, 1.5);
-    sun.position.set(6, 11, 7);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
-    sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
-    sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
-    sun.shadow.bias = -0.0004;
-    scene.add(sun);
-    const keyLight = new THREE.PointLight(BRAND.getHex(), 60, 50);
-    const fillLight = new THREE.PointLight(ACCENT.getHex(), 45, 50);
-    scene.add(keyLight, fillLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const keyLight = new THREE.PointLight(BRAND.getHex(), 90, 60);
+    const fillLight = new THREE.PointLight(ACCENT.getHex(), 70, 60);
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    rimLight.position.set(4, 8, 6);
+    scene.add(keyLight, fillLight, rimLight);
 
-    // ---- materials ----
-    const mWallA = new THREE.MeshStandardMaterial({ color: 0xf3ece0, roughness: 0.85, metalness: 0.02 });
-    const mWallB = new THREE.MeshStandardMaterial({ color: 0xe5d8c3, roughness: 0.9 });
-    const mStone = new THREE.MeshStandardMaterial({ color: 0x8d8276, roughness: 1 });
-    const mRoof = new THREE.MeshStandardMaterial({ color: BRAND.clone().multiplyScalar(0.95).getHex(), roughness: 0.6, metalness: 0.1 });
-    const mTrim = new THREE.MeshStandardMaterial({ color: 0x3a322a, roughness: 0.7 });
-    const mWin = new THREE.MeshStandardMaterial({ color: GOLD.getHex(), emissive: GOLD.clone().multiplyScalar(0.9).getHex(), emissiveIntensity: 1.1, roughness: 0.3, metalness: 0.2 });
-    const mGlass = new THREE.MeshPhysicalMaterial({ color: 0x9fc4d6, roughness: 0.1, metalness: 0, transmission: 0.6, transparent: true, opacity: 0.5 });
-    const mDoor = new THREE.MeshStandardMaterial({ color: ACCENT.getHex(), roughness: 0.5, metalness: 0.15 });
-    const mLeaf = new THREE.MeshStandardMaterial({ color: 0x4c7a52, roughness: 0.9, flatShading: true });
-    const mTrunk = new THREE.MeshStandardMaterial({ color: 0x6b4a31, roughness: 1 });
-
+    // ---- the house ----
     const house = new THREE.Group();
+    const s = 1.15;
+    const body = new THREE.BoxGeometry(2.4 * s, 1.8 * s, 2.4 * s);
+    const roof = new THREE.ConeGeometry(2.0 * s, 1.5 * s, 4);
 
-    // helper: a window with frame + glow
-    function makeWindow(width = 0.7, height = 0.9) {
-      const g = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.12, height + 0.12, 0.08), mTrim);
-      const glow = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.06), mWin);
-      glow.position.z = 0.03;
-      // mullions
-      const barV = new THREE.Mesh(new THREE.BoxGeometry(0.04, height, 0.08), mTrim);
-      const barH = new THREE.Mesh(new THREE.BoxGeometry(width, 0.04, 0.08), mTrim);
-      barV.position.z = barH.position.z = 0.05;
-      g.add(frame, glow, barV, barH);
-      return g;
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, metalness: 0.1, roughness: 0.15,
+      transmission: 0.6, transparent: true, opacity: 0.28,
+      reflectivity: 0.6, clearcoat: 1, clearcoatRoughness: 0.2,
+    });
+    const bodyMesh = new THREE.Mesh(body, glassMat);
+    bodyMesh.position.y = -0.2;
+    const roofMesh = new THREE.Mesh(roof, glassMat.clone());
+    roofMesh.position.y = 1.45;
+    roofMesh.rotation.y = Math.PI / 4;
+    house.add(bodyMesh, roofMesh);
+
+    const bodyEdges = new THREE.LineSegments(new THREE.EdgesGeometry(body), new THREE.LineBasicMaterial({ color: BRAND.getHex(), transparent: true, opacity: 0.9 }));
+    bodyEdges.position.copy(bodyMesh.position);
+    const roofEdges = new THREE.LineSegments(new THREE.EdgesGeometry(roof), new THREE.LineBasicMaterial({ color: GOLD.getHex(), transparent: true, opacity: 0.95 }));
+    roofEdges.position.copy(roofMesh.position);
+    roofEdges.rotation.y = Math.PI / 4;
+    house.add(bodyEdges, roofEdges);
+
+    // ---- windows (always warm-lit) ----
+    const winMat = new THREE.MeshStandardMaterial({ color: GOLD.getHex(), emissive: GOLD.clone().multiplyScalar(0.5).getHex(), emissiveIntensity: 0.5, roughness: 0.4, transparent: true, opacity: 0.9 });
+    const half = 1.2 * s + 0.01;
+    const winGeo = new THREE.PlaneGeometry(0.5, 0.62);
+    const winPositions = [
+      [-0.62, 0.25, half, 0], [0.62, 0.25, half, 0],
+      [-0.62, 0.25, -half, Math.PI], [0.62, 0.25, -half, Math.PI],
+      [half, 0.25, -0.62, Math.PI / 2], [half, 0.25, 0.62, Math.PI / 2],
+      [-half, 0.25, -0.62, -Math.PI / 2], [-half, 0.25, 0.62, -Math.PI / 2],
+    ];
+    for (const [x, y, z, ry] of winPositions) {
+      const win = new THREE.Mesh(winGeo, winMat);
+      win.position.set(x, y, z); win.rotation.y = ry;
+      house.add(win);
     }
 
-    // ---- stone foundation ----
-    const base = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.5, 4.4), mStone);
-    base.position.y = 0.25; base.castShadow = base.receiveShadow = true;
-    house.add(base);
-
-    // ---- ground floor (lighter) ----
-    const floor1 = new THREE.Mesh(new THREE.BoxGeometry(5, 1.9, 4), mWallA);
-    floor1.position.y = 1.45; floor1.castShadow = floor1.receiveShadow = true;
-    house.add(floor1);
-
-    // ---- second floor (slightly inset, two-tone) ----
-    const floor2 = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.6, 3.7), mWallB);
-    floor2.position.y = 3.2; floor2.castShadow = floor2.receiveShadow = true;
-    house.add(floor2);
-
-    // floor divider trim
-    const trimBand = new THREE.Mesh(new THREE.BoxGeometry(5.1, 0.18, 4.1), mTrim);
-    trimBand.position.y = 2.45;
-    house.add(trimBand);
-
-    // ---- gable roof (triangular prism via extrude) ----
-    const roofShape = new THREE.Shape();
-    roofShape.moveTo(-2.55, 0); roofShape.lineTo(2.55, 0); roofShape.lineTo(0, 1.9); roofShape.lineTo(-2.55, 0);
-    const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: 4.1, bevelEnabled: false });
-    roofGeo.translate(0, 0, -2.05);
-    const roof = new THREE.Mesh(roofGeo, mRoof);
-    roof.position.y = 4.0; roof.castShadow = true;
-    house.add(roof);
-
-    // roof edge beams (glowing brand outline)
-    const roofEdges = new THREE.LineSegments(new THREE.EdgesGeometry(roofGeo), new THREE.LineBasicMaterial({ color: GOLD.getHex() }));
-    roofEdges.position.y = 4.0;
-    house.add(roofEdges);
-
-    // chimney
-    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.6, 0.6), mStone);
-    chimney.position.set(1.4, 5.2, -0.6); chimney.castShadow = true;
-    house.add(chimney);
-
-    // ---- door + porch ----
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.12), mDoor);
-    door.position.set(0, 1.15, 2.01);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.1), new THREE.MeshBasicMaterial({ color: ACCENT.getHex(), transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+    door.position.set(0, -0.55, 1.39 * s);
     house.add(door);
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), mWin);
-    knob.position.set(0.3, 1.15, 2.09);
-    house.add(knob);
-    // porch roof
-    const porch = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.8), mTrim);
-    porch.position.set(0, 2.0, 2.3);
-    house.add(porch);
-    const post1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.5, 10), mTrim);
-    post1.position.set(-0.7, 1.2, 2.6);
-    const post2 = post1.clone(); post2.position.x = 0.7;
-    house.add(post1, post2);
-    // steps
-    const step1 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.16, 0.4), mStone);
-    step1.position.set(0, 0.45, 2.35);
-    const step2 = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 0.5), mStone);
-    step2.position.set(0, 0.3, 2.55);
-    house.add(step1, step2);
-
-    // ---- windows ----
-    // front, ground floor (either side of door)
-    const wfl = makeWindow(); wfl.position.set(-1.6, 1.3, 2.01); house.add(wfl);
-    const wfr = makeWindow(); wfr.position.set(1.6, 1.3, 2.01); house.add(wfr);
-    // front, second floor
-    const w2l = makeWindow(0.7, 0.8); w2l.position.set(-1.2, 3.2, 1.86); house.add(w2l);
-    const w2r = makeWindow(0.7, 0.8); w2r.position.set(1.2, 3.2, 1.86); house.add(w2r);
-    // sides
-    for (const sx of [-1, 1]) {
-      const ws = makeWindow(0.8, 0.9); ws.rotation.y = Math.PI / 2; ws.position.set(sx * 2.51, 1.4, 0); house.add(ws);
-      const ws2 = makeWindow(0.7, 0.7); ws2.rotation.y = Math.PI / 2; ws2.position.set(sx * 2.31, 3.2, 0); house.add(ws2);
-    }
-    // round attic window in the gable
-    const attic = new THREE.Mesh(new THREE.CircleGeometry(0.45, 24), mWin);
-    attic.position.set(0, 4.7, 2.04); house.add(attic);
-    const atticFrame = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.06, 8, 24), mTrim);
-    atticFrame.position.set(0, 4.7, 2.06); house.add(atticFrame);
 
     scene.add(house);
 
-    // ---- trees / bushes ----
-    function makeTree(x, z, s = 1) {
-      const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * s, 0.16 * s, 1 * s, 8), mTrunk);
-      trunk.position.y = 0.5 * s; trunk.castShadow = true;
-      const foliage = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7 * s, 0), mLeaf);
-      foliage.position.y = 1.3 * s; foliage.castShadow = true;
-      g.add(trunk, foliage);
-      g.position.set(x, 0.25, z);
-      return g;
-    }
-    house.add(makeTree(-3.2, 1.6, 1.1), makeTree(3.3, -1.2, 0.9), makeTree(-3, -1.8, 0.7));
-
-    // ground disc
-    const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(11, 64),
-      new THREE.MeshStandardMaterial({ color: isDark ? 0x20303a : 0xd9e2d3, roughness: 1 })
-    );
-    ground.rotation.x = -Math.PI / 2; ground.position.y = 0; ground.receiveShadow = true;
-    scene.add(ground);
-    // grid ring accent
-    const ring = new THREE.Mesh(new THREE.RingGeometry(6.2, 10.5, 80, 1), new THREE.MeshBasicMaterial({ color: BRAND.getHex(), transparent: true, opacity: 0.08, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.02;
-    scene.add(ring);
-
     // ---- floating crystals ----
     const crystals = [];
-    const crystalGeo = new THREE.IcosahedronGeometry(0.32, 0);
-    for (let i = 0; i < 10; i++) {
+    const crystalGeo = new THREE.IcosahedronGeometry(0.42, 0);
+    for (let i = 0; i < 14; i++) {
       const useBrand = i % 2 === 0;
       const mat = new THREE.MeshStandardMaterial({ color: (useBrand ? BRAND : ACCENT).getHex(), metalness: 0.4, roughness: 0.25, flatShading: true, transparent: true, opacity: 0.92 });
       const m = new THREE.Mesh(crystalGeo, mat);
-      const ang = (i / 10) * Math.PI * 2;
-      const rad = 6 + Math.random() * 2.5;
-      m.position.set(Math.cos(ang) * rad, 2 + Math.random() * 4, Math.sin(ang) * rad);
-      m.scale.setScalar(0.6 + Math.random());
-      m.userData = { baseY: m.position.y, sp: 0.3 + Math.random() * 0.6, phase: Math.random() * 6.28, rx: (Math.random() - 0.5) * 0.03, ry: (Math.random() - 0.5) * 0.03 };
-      crystals.push(m); scene.add(m);
+      const ang = (i / 14) * Math.PI * 2;
+      const rad = 5 + Math.random() * 3;
+      m.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 6, Math.sin(ang) * rad - 1);
+      m.scale.setScalar(0.5 + Math.random() * 1.1);
+      m.userData = { baseY: m.position.y, sp: 0.3 + Math.random() * 0.7, phase: Math.random() * 6.28, rot: new THREE.Vector3((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02) };
+      const wire = new THREE.LineSegments(new THREE.EdgesGeometry(crystalGeo), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 }));
+      m.add(wire);
+      crystals.push(m);
+      scene.add(m);
     }
 
     // ---- starfield ----
-    const starCount = 400;
+    const starCount = 600;
     const starPos = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i++) {
-      const r = 16 + Math.random() * 20;
+      const r = 14 + Math.random() * 22;
       const th = Math.random() * Math.PI * 2;
       const ph = Math.acos(2 * Math.random() - 1);
       starPos[i * 3] = r * Math.sin(ph) * Math.cos(th);
-      starPos[i * 3 + 1] = Math.abs(r * Math.cos(ph)) * 0.7 + 1;
-      starPos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+      starPos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
+      starPos[i * 3 + 2] = r * Math.cos(ph);
     }
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: isDark ? 0xffffff : 0xb8862f, size: 0.07, transparent: true, opacity: 0.5 }));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.06, transparent: true, opacity: 0.45, sizeAttenuation: true }));
     scene.add(stars);
+
+    // ---- ground ring ----
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(3.4, 9, 64, 1),
+      new THREE.MeshBasicMaterial({ color: BRAND.getHex(), transparent: true, opacity: 0.06, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = -2.4;
+    scene.add(ring);
 
     // ---- resize ----
     function resize() {
@@ -257,15 +200,19 @@ export function Hero3D() {
       if (!visible) return;
       const t = clock.getElapsedTime();
       const speed = reduced ? 0 : 1;
+
+      house.position.y = Math.sin(t * 0.6) * 0.15 * speed;
       for (const m of crystals) {
         const u = m.userData;
-        m.position.y = u.baseY + Math.sin(t * u.sp + u.phase) * 0.5 * speed;
-        m.rotation.x += u.rx * speed; m.rotation.y += u.ry * speed;
+        m.position.y = u.baseY + Math.sin(t * u.sp + u.phase) * 0.6 * speed;
+        m.rotation.x += u.rot.x * speed;
+        m.rotation.y += u.rot.y * speed;
+        m.rotation.z += u.rot.z * speed;
       }
-      stars.rotation.y = t * 0.015 * speed;
-      ring.rotation.z = t * 0.04 * speed;
-      keyLight.position.set(Math.cos(t * 0.6) * 8, 6 + Math.sin(t * 0.5) * 2, Math.sin(t * 0.6) * 8);
-      fillLight.position.set(Math.cos(t * 0.6 + Math.PI) * 8, 3, Math.sin(t * 0.6 + Math.PI) * 8);
+      stars.rotation.y = t * 0.02 * speed;
+      ring.rotation.z = t * 0.05 * speed;
+      keyLight.position.set(Math.cos(t * 0.7) * 7, 4 + Math.sin(t * 0.5) * 2, Math.sin(t * 0.7) * 7);
+      fillLight.position.set(Math.cos(t * 0.7 + Math.PI) * 7, -2 + Math.cos(t * 0.4) * 2, Math.sin(t * 0.7 + Math.PI) * 7);
       controls.update();
       renderer.render(scene, camera);
     }
@@ -273,6 +220,7 @@ export function Hero3D() {
 
     return () => {
       cancelAnimationFrame(raf);
+      if (saveTimer) clearTimeout(saveTimer);
       ro.disconnect(); io.disconnect();
       controls.dispose();
       scene.traverse((obj) => {

@@ -366,8 +366,10 @@ function Sidebar({ p, isOwner, user, setModal }) {
             <button className="btn btn-ghost btn-block" onClick={() => requireAuth() && setModal(<ContactModal p={p} onClose={() => setModal(null)} />)}><Icon name="chat" /> Связаться с риелтором</button>
             <button className="btn btn-ghost btn-block" onClick={toggleFav}><Icon name={fav ? 'heart' : 'heart-outline'} /> {fav ? 'В избранном' : 'В избранное'}</button>
             <button className="btn btn-ghost btn-block" onClick={() => requireAuth() && setModal(<TrackModal p={p} onClose={() => setModal(null)} />)}><Icon name="trending-down" /> Отслеживать цену</button>
+            <button className="btn btn-ghost btn-block" onClick={() => setModal(<ShareModal p={p} onClose={() => setModal(null)} />)}><Icon name="link" /> Поделиться</button>
             <button className="btn btn-block" style={{ color: 'var(--ink-3)' }} onClick={() => requireAuth() && setModal(<ComplaintModal p={p} onClose={() => setModal(null)} />)}><Icon name="flag" /> Пожаловаться на продавца</button>
-          </> : <Link className="btn btn-soft btn-block" to="/dashboard"><Icon name="chart" /> Управлять (в кабинете)</Link>}
+          </> : <><Link className="btn btn-soft btn-block" to="/dashboard"><Icon name="chart" /> Управлять (в кабинете)</Link>
+            <button className="btn btn-ghost btn-block" onClick={() => setModal(<ShareModal p={p} onClose={() => setModal(null)} />)}><Icon name="link" /> Поделиться</button></>}
         </div>
       </div>
 
@@ -501,6 +503,42 @@ function ComplaintModal({ p, onClose }) {
   return (
     <Modal title="Жалоба на продавца" onClose={onClose} footer={<button className="btn btn-danger" onClick={send}>Отправить жалобу</button>}>
       <div className="field"><label>Причина</label><textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Опишите проблему..." /></div>
+    </Modal>
+  );
+}
+
+function ShareModal({ p, onClose }) {
+  const toast = useToast();
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  const url = `${window.location.origin}${window.location.pathname}#/properties/${p.id}`;
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(url)}`;
+
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(url); toast(L('Ссылка скопирована', 'Link copied'), 'ok'); }
+    catch { toast(L('Не удалось скопировать', 'Could not copy'), 'err'); }
+  }
+  async function nativeShare() {
+    if (navigator.share) { try { await navigator.share({ title: p.title, url }); } catch {} }
+    else copyLink();
+  }
+  function exportPdf() {
+    // Browser print dialog → "Save as PDF". Print CSS trims the page to the listing.
+    window.print();
+  }
+
+  return (
+    <Modal title={L('Поделиться объектом', 'Share listing')} onClose={onClose}
+      footer={<><button className="btn btn-ghost" onClick={exportPdf}><Icon name="upload" /> {L('Сохранить в PDF', 'Save as PDF')}</button>
+        <button className="btn btn-primary" onClick={nativeShare}><Icon name="link" /> {L('Поделиться', 'Share')}</button></>}>
+      <div className="share-box">
+        <img className="share-qr" src={qr} alt="QR" width={180} height={180} loading="lazy" />
+        <p className="muted center" style={{ fontSize: 13 }}>{L('Наведите камеру на QR-код', 'Point your camera at the QR code')}</p>
+        <div className="share-link">
+          <input className="input" readOnly value={url} onFocus={(e) => e.target.select()} />
+          <button className="btn btn-soft" onClick={copyLink}><Icon name="link" /> {L('Копировать', 'Copy')}</button>
+        </div>
+      </div>
     </Modal>
   );
 }

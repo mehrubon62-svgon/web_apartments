@@ -387,6 +387,19 @@ def translate_listing(
     return TranslationResult(**translate_property(prop, target))
 
 
+@router.post("/translate-text")
+def translate_text_endpoint(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(rate_limit("translate")),
+):
+    """Translate an arbitrary short text (e.g. a review) to ru|en. Body: {text, lang}."""
+    from modules.properties.translate import translate_text
+    text = str(payload.get("text") or "")
+    lang = "ru" if str(payload.get("lang")) == "ru" else "en"
+    return translate_text(text, lang)
+
+
 @router.get("/{property_id}/similar", response_model=PropertyList)
 def similar(
     property_id: int,
@@ -501,6 +514,30 @@ def add_review(
     prop = get_property(db, property_id)
     if not prop or prop.status == PropertyStatus.deleted:
         raise HTTPException(status_code=404, detail="Property not found")
+    if prop.seller_id == current_user.id:
+        raise HTTPException(status_code=403, detail="You cannot review your own listing")
+    # Only buyers who actually transacted can review:
+    #  - rentals: a booking exists for this user + property
+    #  - sales: a viewing/purchase request was submitted by this user
+    from models import Booking, PurchaseRequest, DealType
+    if prop.deal_type == DealType.rent:
+        has_deal = (
+            db.query(Booking)
+            .filter(Booking.property_id == property_id, Booking.renter_id == current_user.id)
+            .first()
+            is not None
+        )
+        gate_msg = "You can review a rental only after booking it"
+    else:
+        has_deal = (
+            db.query(PurchaseRequest)
+            .filter(PurchaseRequest.property_id == property_id, PurchaseRequest.buyer_id == current_user.id)
+            .first()
+            is not None
+        )
+        gate_msg = "You can review a listing only after requesting a viewing"
+    if not has_deal:
+        raise HTTPException(status_code=403, detail=gate_msg)
     existing = (
         db.query(Review)
         .filter(Review.property_id == property_id, Review.user_id == current_user.id)
@@ -518,6 +555,84 @@ def add_review(
     db.commit()
     db.refresh(review)
     return ReviewOut.model_validate(review)
+
+
+@router.put("/{property_id}/reviews/{review_id}", response_model=ReviewOut)
+def edit_review(
+    property_id: int,
+    review_id: int,
+    data: ReviewIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    review = db.query(Review).filter(Review.id == review_id, Review.property_id == property_id).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if review.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your review")
+    review.rating = data.rating
+    review.text = data.text
+    db.commit()
+    db.refresh(review)
+    return ReviewOut.model_validate(review)
+
+
+@router.delete("/{property_id}/reviews/{review_id}")
+def delete_review(
+    property_id: int,
+    review_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    review = db.query(Review).filter(Review.id == review_id, Review.property_id == property_id).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if review.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not your review")
+    db.delete(review)
+    db.commit()
+    return {"detail": "Review deleted"}
+
+
+@router.get("/{property_id}/can-review")
+def can_review(
+    property_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Whether the current user is eligible to leave a review for this listing
+    (transacted + hasn't reviewed yet), plus their existing review id if any."""
+    from models import Booking, PurchaseRequest, DealType
+    prop = get_property(db, property_id)
+    if not prop or prop.status == PropertyStatus.deleted:
+        raise HTTPException(status_code=404, detail="Property not found")
+    if prop.seller_id == current_user.id:
+        return {"can_review": False, "reason": "own_listing", "existing_review_id": None}
+    if prop.deal_type == DealType.rent:
+        transacted = (
+            db.query(Booking)
+            .filter(Booking.property_id == property_id, Booking.renter_id == current_user.id)
+            .first() is not None
+        )
+        reason = None if transacted else "need_booking"
+    else:
+        transacted = (
+            db.query(PurchaseRequest)
+            .filter(PurchaseRequest.property_id == property_id, PurchaseRequest.buyer_id == current_user.id)
+            .first() is not None
+        )
+        reason = None if transacted else "need_request"
+    existing = (
+        db.query(Review)
+        .filter(Review.property_id == property_id, Review.user_id == current_user.id)
+        .first()
+    )
+    return {
+        "can_review": transacted and existing is None,
+        "transacted": transacted,
+        "reason": "already_reviewed" if existing else reason,
+        "existing_review_id": existing.id if existing else None,
+    }
 
 
 # ===== Availability calendar (rent) =====

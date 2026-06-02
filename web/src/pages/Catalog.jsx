@@ -7,9 +7,10 @@ import { PropertyGrid } from '../components/PropertyCard.jsx';
 import { SkeletonGrid, Empty } from '../components/Common.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { TYPE_LABELS } from '../lib/format.js';
+import { SEARCH_PHRASES, pickPhrases } from '../lib/suggestions.js';
 
 export function CatalogPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const toast = useToast();
   const nav = useNavigate();
   const [filters, setFilters] = useState({ deal_type: '', type: '', min_price: '', max_price: '', min_area: '', rooms: '' });
@@ -19,6 +20,13 @@ export function CatalogPage() {
   const [expand, setExpand] = useState(1);          // page-1 only: 1..3 chunks shown (=Show more clicks +1)
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  // Rotating bilingual search hints under the hero search.
+  const [hints, setHints] = useState(() => pickPhrases(SEARCH_PHRASES, lang, 5));
+  useEffect(() => {
+    setHints(pickPhrases(SEARCH_PHRASES, lang, 5));
+    const id = setInterval(() => setHints(pickPhrases(SEARCH_PHRASES, lang, 5)), 4500);
+    return () => clearInterval(id);
+  }, [lang]);
   // New random order on each page-load (kept stable across pagination).
   const seedRef = useRef(Math.floor(Math.random() * 1e9));
   const LIMIT = 20;            // items per "Show more" chunk
@@ -42,7 +50,7 @@ export function CatalogPage() {
   useEffect(() => { load(page); setExpand(page === 1 ? 1 : 3); window.scrollTo({ top: 0, behavior: 'smooth' }); }, [page]);
 
   function setF(k, v) { setFilters((f) => ({ ...f, [k]: v })); }
-  function doSearch() { if (q.trim()) nav('/search?q=' + encodeURIComponent(q.trim())); }
+  function doSearch(text) { const v = (text ?? q).trim(); if (v) nav('/search?q=' + encodeURIComponent(v)); }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // On page 1 we reveal progressively; other pages show the full chunk.
@@ -58,7 +66,13 @@ export function CatalogPage() {
           <p>{t('Иммерсивные 360°-туры, ответы ИИ про любую зону квартиры и честные сделки онлайн.')}</p>
           <div className="hero-search">
             <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} placeholder={t('Поиск: «двушка у метро», адрес, район...')} />
-            <button className="btn btn-primary" onClick={doSearch}>{t('Искать')}</button>
+            <button className="btn btn-primary" onClick={() => doSearch()}>{t('Искать')}</button>
+          </div>
+          <div className="hero-hints">
+            <span className="hero-hints-label">{lang === 'ru' ? 'Попробуйте:' : 'Try:'}</span>
+            {hints.map((h) => (
+              <button key={h} className="hero-hint-chip" onClick={() => { setQ(h); doSearch(h); }}>{h}</button>
+            ))}
           </div>
           <div className="hero-stats">
             <div><b>360°</b><span>{t('Виртуальные туры')}</span></div>

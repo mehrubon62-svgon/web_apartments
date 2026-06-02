@@ -179,6 +179,15 @@ function AgentResultBlock({ block, lang, onNavigate }) {
     );
   }
   if (block.kind === 'link') {
+    if (block.url) {
+      return (
+        <a className="ag-linkbtn" href={block.url} target="_blank" rel="noreferrer">
+          <Icon name={block.icon} size={15} />
+          <span>{lang === 'ru' ? block.label_ru : block.label_en}</span>
+          <Icon name="arrow-right" size={15} />
+        </a>
+      );
+    }
     return (
       <button className="ag-linkbtn" onClick={() => onNavigate(block.path)}>
         <Icon name={block.icon} size={15} />
@@ -312,14 +321,67 @@ export function AgentWidget() {
     const msg = (text ?? input).trim();
     if (!msg || busy) return;
     if (!api.config.aiEnabled) { setMessages((m) => [...m, { role: 'bot', text: lang === 'ru' ? 'ИИ не настроен на сервере.' : 'AI is not configured on the server.' }]); return; }
-    setInput(''); setMessages((m) => [...m, { role: 'user', text: msg }]); setBusy(true);
+    setInput('');
+    setMessages((m) => [...m, { role: 'user', text: msg }]);
+    setBusy(true);
+
+    // Append an empty bot bubble we'll fill as tokens stream in.
+    const botIndex = { current: -1 };
+    setMessages((m) => { botIndex.current = m.length; return [...m, { role: 'bot', text: '', streaming: true }]; });
+    const patchBot = (patch) => setMessages((m) => m.map((mm, i) => (i === botIndex.current ? { ...mm, ...(typeof patch === 'function' ? patch(mm) : patch) } : mm)));
+
     try {
-      const res = await api.agentChat({ message: msg, conversation_id: convoId.current, lang });
-      convoId.current = res.conversation_id;
-      localStorage.setItem(CID_KEY, String(res.conversation_id));
-      setMessages((m) => [...m, { role: 'bot', text: res.reply || '…', tools: res.tool_calls, results: res.results }]);
-    } catch (e) { setMessages((m) => [...m, { role: 'bot', text: '⚠️ ' + e.message }]); }
-    finally { setBusy(false); }
+      const resp = await fetch(api.agentChatStreamUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.tokens.access}` },
+        body: JSON.stringify({ message: msg, conversation_id: convoId.current, lang }),
+      });
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const handleEvent = (payload) => {
+        let obj; try { obj = JSON.parse(payload); } catch { return; }
+        if (obj.type === 'meta') {
+          if (obj.conversation_id) { convoId.current = obj.conversation_id; localStorage.setItem(CID_KEY, String(obj.conversation_id)); }
+          patchBot({ tools: obj.tool_calls, results: obj.results });
+        } else if (obj.type === 'delta') {
+          patchBot((mm) => ({ text: (mm.text || '') + obj.text }));
+        } else if (obj.type === 'done') {
+          patchBot((mm) => ({ text: obj.reply || mm.text || '…', streaming: false }));
+        } else if (obj.type === 'error') {
+          patchBot({ text: '⚠️ ' + (obj.detail || 'error'), streaming: false });
+        }
+      };
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, nl);
+          buffer = buffer.slice(nl + 2);
+          const line = frame.split('\n').find((l) => l.startsWith('data: '));
+          if (line) handleEvent(line.slice(6));
+        }
+      }
+      patchBot((mm) => ({ streaming: false, text: mm.text || '…' }));
+    } catch (e) {
+      // Fall back to the non-streaming endpoint on any streaming failure.
+      try {
+        const res = await api.agentChat({ message: msg, conversation_id: convoId.current, lang });
+        convoId.current = res.conversation_id;
+        localStorage.setItem(CID_KEY, String(res.conversation_id));
+        patchBot({ text: res.reply || '…', tools: res.tool_calls, results: res.results, streaming: false });
+      } catch (e2) {
+        patchBot({ text: '⚠️ ' + e2.message, streaming: false });
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function clearHistory() {
@@ -366,7 +428,7 @@ export function AgentWidget() {
                 <div className="ava">{m.role === 'user' ? <Icon name="user" /> : <Icon name="logo" />}</div>
                 <div className="agent-msg-col">
                   <div className="agent-bubble">
-                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}{m.streaming && <span className="stream-caret" />}{m.streaming && !m.text && <span className="typing"><span /><span /><span /></span>}</div>
                     {m.tools && m.tools.length > 0 && <div className="agent-tools">{[...new Set(m.tools)].map((t) => <span key={t} className="tool-chip">{TOOL_LABELS[t] || t}</span>)}</div>}
                   </div>
                   {m.results && m.results.length > 0 && (
@@ -377,7 +439,7 @@ export function AgentWidget() {
                 </div>
               </div>
             ))}
-            {busy && <div className="agent-msg bot"><div className="ava"><Icon name="logo" /></div><div className="agent-bubble"><span className="typing"><span /><span /><span /></span></div></div>}
+            {busy && !messages.some((m) => m.streaming) && <div className="agent-msg bot"><div className="ava"><Icon name="logo" /></div><div className="agent-bubble"><span className="typing"><span /><span /><span /></span></div></div>}
             {messages.length <= 1 && !busy && (
               <div className="agent-suggest" style={{ marginTop: 4 }}>
                 {suggestions.map((s) => <button key={s} className="chip" onClick={() => send(s)}>{s}</button>)}

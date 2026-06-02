@@ -101,6 +101,57 @@ def chat(messages: list[dict[str, Any]], temperature: float = 0.4, model: str | 
     return _first_text(data)
 
 
+def chat_stream(messages: list[dict[str, Any]], temperature: float = 0.4, model: str | None = None, max_tokens: int | None = None, timeout: float = 60.0):
+    """Yield text deltas from a streaming completion.
+
+    Falls back across the model chain on 404/429 like `_post`. Raises AIError if
+    streaming cannot start on any model.
+    """
+    if not is_configured():
+        raise AIError("AI is not configured. Set AI_API_KEY in your environment.")
+    url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
+    chain = _model_chain(model or AI_MODEL)
+    last_err = "no model attempted"
+    for m in chain:
+        body = {
+            "model": m,
+            "messages": messages,
+            "max_tokens": max_tokens or AI_MAX_TOKENS,
+            "temperature": temperature,
+            "stream": True,
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream("POST", url, headers=_headers(), json=body) as resp:
+                    if resp.status_code in (404, 429):
+                        last_err = f"{resp.status_code}"
+                        continue
+                    resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            line = line[6:]
+                        if line.strip() == "[DONE]":
+                            return
+                        try:
+                            chunk = json.loads(line)
+                        except ValueError:
+                            continue
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+                        piece = delta.get("content")
+                        if piece:
+                            yield piece
+                    return
+        except httpx.HTTPError as exc:
+            last_err = str(exc)
+            continue
+    raise AIError(f"Streaming failed. Last error: {last_err}")
+
+
 def chat_with_tools(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],

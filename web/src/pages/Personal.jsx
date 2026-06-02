@@ -8,6 +8,7 @@ import { Icon } from '../lib/icons.jsx';
 import { Spinner, Empty, Modal, Avatar, Stars } from '../components/Common.jsx';
 import { PropertyGrid, PropertyCard } from '../components/PropertyCard.jsx';
 import { money, fmtDate, timeAgo, mediaUrl, ROLE_LABELS } from '../lib/format.js';
+import { REC_PHRASES, pickPhrases } from '../lib/suggestions.js';
 
 function Page({ title, sub, actions, children }) {
   return <div className="page"><div className="container">
@@ -24,13 +25,55 @@ function useAuthGuard() {
 export function FavoritesPage() {
   useAuthGuard();
   const toast = useToast();
+  const nav = useNavigate();
+  const { lang } = useI18n();
   const [items, setItems] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState([]);
   const load = () => api.favorites().then((d) => setItems(d.items)).catch(() => setItems([]));
   useEffect(() => { load(); }, []);
   async function clearAll() { if (confirm('Очистить избранное?')) { await api.clearFavorites(); toast('Избранное очищено', 'ok'); load(); } }
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+
+  function togglePick(id) {
+    setPicked((p) => p.includes(id) ? p.filter((x) => x !== id) : (p.length >= 4 ? p : [...p, id]));
+  }
+  function doCompare() {
+    if (picked.length < 2) { toast(L('Выберите 2–4 объекта', 'Pick 2–4 listings'), 'info'); return; }
+    nav(`/compare?ids=${picked.join(',')}`);
+  }
+
+  const actions = items && items.length > 0 && (
+    <div className="row" style={{ gap: 8 }}>
+      <button className={`btn btn-sm ${picking ? 'btn-primary' : 'btn-ghost'}`} onClick={() => { setPicking((v) => !v); setPicked([]); }}>
+        <Icon name="scale" /> {picking ? L('Отмена', 'Cancel') : L('Сравнить', 'Compare')}
+      </button>
+      {!picking && <button className="btn btn-ghost btn-sm" onClick={clearAll}><Icon name="trash" /> {L('Очистить всё', 'Clear all')}</button>}
+    </div>
+  );
+
   return (
-    <Page title="Избранное" sub="Сохранённые объекты" actions={items && items.length > 0 && <button className="btn btn-ghost btn-sm" onClick={clearAll}><Icon name="trash" /> Очистить всё</button>}>
-      {items === null ? <Spinner /> : items.length ? <PropertyGrid items={items} onFav={() => load()} /> : <Empty icon="heart-outline" title="Избранное пусто" sub="Добавляйте понравившиеся объекты сердечком" action={<Link className="btn btn-primary mt-16" to="/">В каталог</Link>} />}
+    <Page title="Избранное" sub="Сохранённые объекты" actions={actions}>
+      {picking && (
+        <div className="compare-bar">
+          <span>{L(`Выбрано: ${picked.length} из 4`, `Selected: ${picked.length} of 4`)}</span>
+          <button className="btn btn-primary btn-sm" disabled={picked.length < 2} onClick={doCompare}>
+            <Icon name="scale" /> {L('Сравнить выбранные', 'Compare selected')}
+          </button>
+        </div>
+      )}
+      {items === null ? <Spinner /> : items.length ? (
+        picking ? (
+          <div className="grid grid-props">
+            {items.map((p) => (
+              <div key={p.id} className={`compare-pick ${picked.includes(p.id) ? 'on' : ''}`} onClick={() => togglePick(p.id)}>
+                <div className="compare-pick-check"><Icon name={picked.includes(p.id) ? 'check' : 'plus'} size={16} /></div>
+                <PropertyCard p={p} />
+              </div>
+            ))}
+          </div>
+        ) : <PropertyGrid items={items} onFav={() => load()} />
+      ) : <Empty icon="heart-outline" title="Избранное пусто" sub="Добавляйте понравившиеся объекты сердечком" action={<Link className="btn btn-primary mt-16" to="/">В каталог</Link>} />}
     </Page>
   );
 }
@@ -70,6 +113,40 @@ const REC_SUGGESTIONS = {
   ],
 };
 
+const REC_SUGGESTIONS = {
+  ru: [
+    'для семьи с детьми', 'рядом с метро', 'тихий зелёный район', 'с панорамным видом',
+    'для первой покупки', 'под сдачу в аренду', 'современный ремонт', 'просторная и светлая',
+    'недорого, но уютно', 'ближе к центру', 'для пары без детей', 'с балконом',
+    'студия для студента', 'дом с двором', 'инвестиция с ростом цены', 'апартаменты у воды',
+    'для удалённой работы', 'с парковкой', 'рядом со школой', 'премиум-класс',
+  ],
+  en: [
+    'for a family with kids', 'near the metro', 'quiet green area', 'with a panoramic view',
+    'for a first purchase', 'good to rent out', 'modern renovation', 'spacious and bright',
+    'affordable but cosy', 'closer to downtown', 'for a couple', 'with a balcony',
+    'studio for a student', 'house with a yard', 'investment with upside', 'apartments by the water',
+    'good for remote work', 'with parking', 'near a school', 'premium class',
+  ],
+};
+
+const REC_SUGGESTIONS = {
+  ru: [
+    'для семьи с детьми', 'рядом с метро', 'тихий зелёный район', 'с панорамным видом',
+    'для первой покупки', 'под сдачу в аренду', 'современный ремонт', 'просторная и светлая',
+    'недорого, но уютно', 'ближе к центру', 'для пары без детей', 'с балконом',
+    'студия для студента', 'дом с двором', 'инвестиция с ростом цены', 'апартаменты у воды',
+    'для удалённой работы', 'с парковкой', 'рядом со школой', 'премиум-класс',
+  ],
+  en: [
+    'for a family with kids', 'near the metro', 'quiet green area', 'with a panoramic view',
+    'for a first purchase', 'good to rent out', 'modern renovation', 'spacious and bright',
+    'affordable but cosy', 'closer to downtown', 'for a couple', 'with a balcony',
+    'studio for a student', 'house with a yard', 'investment with upside', 'apartments by the water',
+    'good for remote work', 'with parking', 'near a school', 'premium class',
+  ],
+};
+
 export function RecommendationsPage() {
   const { user } = useApp(); const nav = useNavigate();
   const { lang, t } = useI18n();
@@ -77,14 +154,10 @@ export function RecommendationsPage() {
   const [ai, setAi] = useState(null);
   const [basic, setBasic] = useState(null);
   const [query, setQuery] = useState('');
-  // 6 random suggestion chips for the current language, reshuffled per load.
-  const chips = useMemo(() => {
-    const all = [...(REC_SUGGESTIONS[lang] || REC_SUGGESTIONS.en)];
-    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
-    return all.slice(0, 6);
-  }, [lang]);
-  const loadAi = (q) => { setAi(null); api.aiRecommendations({ limit: 9, query: (q ?? query).trim() || undefined, lang, _t: Date.now() }).then(setAi).catch(() => setAi({ items: [], ai_used: false })); };
-  const loadBasic = () => { setBasic(null); api.recommendations({ limit: 8, _t: Date.now() }).then((d) => setBasic(d.items)).catch(() => setBasic([])); };
+  // 8 random suggestion chips for the current language, reshuffled per load.
+  const chips = useMemo(() => pickPhrases(REC_PHRASES, lang, 8), [lang]);
+  const loadAi = (q) => { setAi(null); api.aiRecommendations({ limit: 10, query: (q ?? query).trim() || undefined, lang, _t: Date.now() }).then(setAi).catch(() => setAi({ items: [], ai_used: false })); };
+  const loadBasic = () => { setBasic(null); api.recommendations({ limit: 10, _t: Date.now() }).then((d) => setBasic(d.items)).catch(() => setBasic([])); };
   const refreshAll = () => { loadAi(); loadBasic(); };
   useEffect(() => { refreshAll(); }, []);
   return (

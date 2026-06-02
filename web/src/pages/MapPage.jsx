@@ -16,6 +16,7 @@ export function MapPage() {
   const [poi, setPoi] = useState({ metro: true, school: true, shop: true });
   const poiMarkers = useRef([]);
   const [hasMap, setHasMap] = useState(true);
+  const [heat, setHeat] = useState(false);
 
   // init map once
   useEffect(() => {
@@ -32,8 +33,40 @@ export function MapPage() {
   useEffect(() => { if (mapRef.current && mapRef.current.getSource('properties')) loadMarkers(); else loadList(); }, [filters]);
   useEffect(() => { if (mapRef.current) loadPOIs(); }, [poi]);
 
+  // Toggle the price heatmap layer + dim the regular markers under it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer || !map.getLayer('price-heat')) return;
+    map.setLayoutProperty('price-heat', 'visibility', heat ? 'visible' : 'none');
+    const circle = heat ? 0.3 : 1, text = heat ? 0.25 : 1;
+    if (map.getLayer('clusters')) map.setPaintProperty('clusters', 'circle-opacity', circle);
+    if (map.getLayer('unclustered-point')) map.setPaintProperty('unclustered-point', 'circle-opacity', circle);
+    if (map.getLayer('cluster-count')) map.setPaintProperty('cluster-count', 'text-opacity', text);
+    if (map.getLayer('unclustered-price')) map.setPaintProperty('unclustered-price', 'text-opacity', text);
+  }, [heat]);
+
   function initLayers(map) {
     map.addSource('properties', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, cluster: true, clusterMaxZoom: 14, clusterRadius: 50 });
+    // Separate un-clustered source used only for the price heatmap.
+    map.addSource('heat', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'price-heat', type: 'heatmap', source: 'heat',
+      layout: { visibility: 'none' },
+      paint: {
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'w'], 0, 0.15, 1, 1],
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 15, 2.4],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 22, 15, 60],
+        'heatmap-opacity': 0.75,
+        'heatmap-color': [
+          'interpolate', ['linear'], ['heatmap-density'],
+          0, 'rgba(31,92,77,0)',
+          0.2, 'rgba(31,92,77,0.5)',
+          0.45, 'rgba(184,134,47,0.65)',
+          0.7, 'rgba(194,80,46,0.8)',
+          1, 'rgba(138,50,25,0.95)',
+        ],
+      },
+    });
     map.addLayer({ id: 'clusters', type: 'circle', source: 'properties', filter: ['has', 'point_count'], paint: { 'circle-color': '#c2502e', 'circle-radius': ['step', ['get', 'point_count'], 20, 10, 26, 50, 32], 'circle-stroke-width': 3, 'circle-stroke-color': '#fff' } });
     map.addLayer({ id: 'cluster-count', type: 'symbol', source: 'properties', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 14 }, paint: { 'text-color': '#fff' } });
     map.addLayer({ id: 'unclustered-point', type: 'circle', source: 'properties', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'deal_type'], 'rent', '#1f5c4d', '#c2502e'], 'circle-radius': 8, 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } });
@@ -65,6 +98,22 @@ export function MapPage() {
       }));
       const src = mapRef.current.getSource('properties');
       if (src) src.setData({ type: 'FeatureCollection', features });
+      // Build the price-weighted heatmap features (normalize price 0..1).
+      const heatSrc = mapRef.current.getSource('heat');
+      if (heatSrc) {
+        const priced = data.filter((p) => p.lat != null && p.lng != null && p.price != null);
+        const prices = priced.map((p) => p.price);
+        const min = prices.length ? Math.min(...prices) : 0;
+        const max = prices.length ? Math.max(...prices) : 1;
+        const span = max - min || 1;
+        heatSrc.setData({
+          type: 'FeatureCollection',
+          features: priced.map((p) => ({
+            type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+            properties: { w: (p.price - min) / span },
+          })),
+        });
+      }
       if (features.length) {
         const b = new window.mapboxgl.LngLatBounds();
         features.forEach((f) => b.extend(f.geometry.coordinates));
@@ -148,6 +197,9 @@ export function MapPage() {
         {[['metro', 'train', 'Метро'], ['school', 'book', 'Школы'], ['shop', 'cart', 'Магазины']].map(([k, ic, lbl]) => (
           <button key={k} className={`poi-toggle ${poi[k] ? 'active' : ''}`} onClick={() => setPoi((s) => ({ ...s, [k]: !s[k] }))}><Icon name={ic} /><span>{lbl}</span></button>
         ))}
+        <div className="map-legend-title" style={{ marginTop: 10 }}>Тепловая карта цен</div>
+        <button className={`poi-toggle ${heat ? 'active' : ''}`} onClick={() => setHeat((v) => !v)}><Icon name="fire" /><span>Цены по районам</span></button>
+        {heat && <div className="heat-legend"><span>дешевле</span><span className="heat-bar" /><span>дороже</span></div>}
       </div>
     </div>
   );

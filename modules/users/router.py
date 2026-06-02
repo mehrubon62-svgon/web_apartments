@@ -410,6 +410,7 @@ def seller_reviews(
     user_id: int,
     deal_type: str | None = None,
     db: Session = Depends(get_db),
+    current_user: "User | None" = Depends(get_optional_user),
 ):
     """All reviews across a seller's listings.
 
@@ -431,6 +432,7 @@ def seller_reviews(
         q = q.filter(Property.deal_type == DealType(deal_type))
     rows = q.order_by(Review.created_at.desc()).all()
 
+    uid = current_user.id if current_user else None
     out = []
     for review, prop in rows:
         out.append({
@@ -438,6 +440,7 @@ def seller_reviews(
             "rating": review.rating,
             "text": review.text,
             "created_at": review.created_at.isoformat() if review.created_at else None,
+            "can_edit": uid is not None and review.user_id == uid,
             "user": {
                 "id": review.user.id,
                 "full_name": review.user.full_name,

@@ -111,6 +111,10 @@ export const api = {
   mortgage: (id, b) => req('POST', `/properties/${id}/mortgage`, { body: b }),
   reviews: (id) => req('GET', `/properties/${id}/reviews`),
   addReview: (id, b) => req('POST', `/properties/${id}/reviews`, { body: b }),
+  editReview: (id, rid, b) => req('PUT', `/properties/${id}/reviews/${rid}`, { body: b }),
+  deleteReview: (id, rid) => req('DELETE', `/properties/${id}/reviews/${rid}`),
+  canReview: (id) => req('GET', `/properties/${id}/can-review`),
+  translateText: (text, lang) => req('POST', '/properties/translate-text', { body: { text, lang } }),
   availability: (id) => req('GET', `/properties/${id}/availability`),
   addAvailability: (id, b) => req('POST', `/properties/${id}/availability`, { body: b }),
 
@@ -156,6 +160,7 @@ export const api = {
   aiRecommendations: (params) => req('GET', '/recommendations/ai', { params }),
 
   agentChat: (b) => req('POST', '/agent/chat', { body: b }),
+  agentChatStreamUrl: () => `${API_BASE}/agent/chat/stream`,
   agentConversations: () => req('GET', '/agent/conversations'),
   deleteAgentConversation: (id) => req('DELETE', `/agent/conversations/${id}`),
 

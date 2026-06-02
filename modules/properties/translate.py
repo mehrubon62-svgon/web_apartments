@@ -22,6 +22,51 @@ def _detect_lang(text: str) -> str:
     return "ru" if any("\u0400" <= ch <= "\u04FF" for ch in (text or "")) else "en"
 
 
+_TEXT_CACHE: dict[tuple, tuple[float, dict]] = {}
+
+
+def translate_text(text: str, target: str) -> dict:
+    """Translate an arbitrary short text (e.g. a review) into the target language.
+
+    Returns {"text", "source_lang", "target_lang", "translated"}. If the text is
+    already in the target language or AI is unavailable, returns it unchanged.
+    """
+    text = (text or "").strip()
+    target = "ru" if target == "ru" else "en"
+    source = _detect_lang(text)
+    base = {"text": text, "source_lang": source, "target_lang": target, "translated": False}
+    if not text or source == target:
+        return base
+
+    key = (hash(text), target)
+    cached = _TEXT_CACHE.get(key)
+    if cached and (time.time() - cached[0]) < _TTL:
+        return cached[1]
+
+    from modules.ai.service import chat, is_configured, AIError
+    if not is_configured():
+        return base
+
+    target_name = "Russian" if target == "ru" else "English"
+    prompt = (
+        f"Translate the following text into {target_name}. Keep the tone natural and faithful, "
+        "preserve meaning. Return ONLY the translated text, no quotes, no commentary.\n\n"
+        f"{text}"
+    )
+    try:
+        out = chat([{"role": "user", "content": prompt}], temperature=0.2,
+                   model=AI_RECOMMEND_MODEL, max_tokens=400, timeout=18.0).strip()
+    except AIError:
+        return base
+    if not out:
+        return base
+    result = {"text": out, "source_lang": source, "target_lang": target, "translated": True}
+    _TEXT_CACHE[key] = (time.time(), result)
+    if len(_TEXT_CACHE) > 1000:
+        _TEXT_CACHE.clear()
+    return result
+
+
 def translate_property(prop: Property, target: str) -> dict:
     title = prop.title or ""
     description = prop.description or ""

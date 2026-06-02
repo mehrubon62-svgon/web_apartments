@@ -10,17 +10,23 @@ from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
+from datetime import date, datetime, timedelta
+
 from models import (
     Property,
     PropertyStatus,
     DealType,
     PropertyType,
     PriceTracker,
+    Booking,
+    BookingStatus,
+    PaymentStatus,
 )
 from modules.properties.crud import search_properties, get_property, cover_url, has_tour
 from modules.favorites.crud import add_favorite, remove_favorite, clear_favorites, list_favorites
 from modules.history.crud import list_history, clear_history
 from modules.recommendations.crud import load_recommended_properties
+from modules.messages.crud import get_or_create_conversation, add_message
 
 
 # ===== Tool schemas (sent to the model) =====
@@ -188,6 +194,46 @@ TOOLS: list[dict[str, Any]] = [
             "name": "get_recommendations",
             "description": "Get personalized property recommendations for the user.",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "book_viewing",
+            "description": (
+                "Book a rental property for given dates (creates a real booking + payment "
+                "checkout link). ONLY for rentals (deal_type='rent'). Dates must be ISO "
+                "YYYY-MM-DD and in the future. If the user gives relative dates ('next "
+                "weekend'), convert to concrete dates first."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "property_id": {"type": "integer"},
+                    "start_date": {"type": "string", "description": "Check-in date, YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "Check-out date, YYYY-MM-DD"},
+                },
+                "required": ["property_id", "start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "contact_seller",
+            "description": (
+                "Open a chat with the seller of a property and send the user's first message. "
+                "Use when the user wants to contact/message the seller or ask the owner a "
+                "question about a specific listing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "property_id": {"type": "integer"},
+                    "message": {"type": "string", "description": "The message to send the seller"},
+                },
+                "required": ["property_id"],
+            },
         },
     },
 ]
@@ -386,6 +432,72 @@ def _t_get_recommendations(db, user_id, args):
     return {"recommendations": [_serialize_card(db, p) for p in props]}
 
 
+def _parse_date(s):
+    try:
+        return date.fromisoformat(str(s)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _t_book_viewing(db, user_id, args):
+    from modules.payments.service import create_session, checkout_url
+    pid = int(args["property_id"])
+    prop = get_property(db, pid)
+    if not prop or prop.status == PropertyStatus.deleted:
+        return {"error": "Property not found"}
+    if prop.deal_type != DealType.rent:
+        return {"error": "This property is not for rent — booking is only for rentals."}
+    start = _parse_date(args.get("start_date"))
+    end = _parse_date(args.get("end_date"))
+    if not start or not end:
+        return {"error": "Provide start_date and end_date as YYYY-MM-DD."}
+    if end <= start:
+        return {"error": "end_date must be after start_date."}
+    if start < date.today():
+        return {"error": "start_date must be in the future."}
+    # overlap check
+    rows = (
+        db.query(Booking)
+        .filter(Booking.property_id == pid, Booking.status != BookingStatus.cancelled)
+        .all()
+    )
+    for b in rows:
+        if start < b.end_date and b.start_date < end:
+            return {"error": "Selected dates are not available."}
+    nights = max((end - start).days, 1)
+    total = round(prop.price * nights, 2)
+    booking = Booking(
+        property_id=pid, renter_id=user_id, start_date=start, end_date=end,
+        total_price=total, status=BookingStatus.pending, payment_status=PaymentStatus.unpaid,
+    )
+    db.add(booking)
+    db.commit()
+    db.refresh(booking)
+    session = create_session(db, booking)
+    return {
+        "ok": True, "action": "booked_viewing", "booking_id": booking.id,
+        "nights": nights, "total_price": total,
+        "checkout_url": checkout_url(session.token),
+        "property": _serialize_card(db, prop),
+    }
+
+
+def _t_contact_seller(db, user_id, args):
+    pid = int(args["property_id"])
+    prop = get_property(db, pid)
+    if not prop or prop.status == PropertyStatus.deleted:
+        return {"error": "Property not found"}
+    if prop.seller_id == user_id:
+        return {"error": "This is your own listing."}
+    convo = get_or_create_conversation(db, buyer_id=user_id, seller_id=prop.seller_id, property_id=pid)
+    text = (args.get("message") or "").strip() or "Здравствуйте! Интересует ваш объект."
+    add_message(db, convo, sender_id=user_id, text=text)
+    return {
+        "ok": True, "action": "contacted_seller", "conversation_id": convo.id,
+        "sent_message": text, "property": _serialize_card(db, prop),
+    }
+
+
 _HANDLERS: dict[str, Callable] = {
     "search_properties": _t_search,
     "open_tour": _t_open_tour,
@@ -400,4 +512,6 @@ _HANDLERS: dict[str, Callable] = {
     "set_price_tracker": _t_set_tracker,
     "remove_price_tracker": _t_remove_tracker,
     "get_recommendations": _t_get_recommendations,
+    "book_viewing": _t_book_viewing,
+    "contact_seller": _t_contact_seller,
 }

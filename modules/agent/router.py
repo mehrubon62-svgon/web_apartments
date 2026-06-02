@@ -2,12 +2,13 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from models import get_db, User, AIConversation
 from dependencies import get_current_user
-from modules.ai.service import chat_with_tools, chat, is_configured, AIError
+from modules.ai.service import chat_with_tools, chat, chat_stream, is_configured, AIError
 from modules.agent.tools import TOOLS, execute_tool
 from modules.ratelimit.limiter import rate_limit
 
@@ -47,7 +48,11 @@ SYSTEM_PROMPT = (
     "empty the whole favorites list → clear_favorites. To start price tracking → set_price_tracker; "
     "to stop it → remove_price_tracker. Only call delete_viewing_history when the user explicitly "
     "asks to clear their VIEWING HISTORY — never as a side effect of a favorites or tracker "
-    "request. Call only the single tool the user asked for; do not chain unrelated tools."
+    "request. Call only the single tool the user asked for; do not chain unrelated tools.\n"
+    "9. To book/reserve a RENTAL for dates → book_viewing (returns a payment link; only rentals). "
+    "To message/contact/write to the seller or owner of a listing → contact_seller. Resolve "
+    "relative dates (e.g. 'this weekend', 'next month') to concrete YYYY-MM-DD using today's date "
+    "given below before calling book_viewing."
 )
 
 MAX_TOOL_ROUNDS = 5
@@ -123,6 +128,28 @@ def _build_ui_results(tool_results: list[dict]) -> list[dict]:
                 "kind": "link", "icon": "map", "path": "/map",
                 "label_en": "Show on map", "label_ru": "Показать на карте",
             })
+        elif tool == "book_viewing" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "calendar", "status": "ok",
+                "label_en": f"Booking created — {res.get('nights')} night(s), ${res.get('total_price')}",
+                "label_ru": f"Бронь создана — {res.get('nights')} ноч., ${res.get('total_price')}",
+                "property": res.get("property"),
+            })
+            if res.get("checkout_url"):
+                blocks.append({
+                    "kind": "link", "icon": "card", "url": res["checkout_url"],
+                    "label_en": "Pay for the booking", "label_ru": "Оплатить бронь",
+                })
+        elif tool == "contact_seller" and res.get("ok"):
+            blocks.append({
+                "kind": "action", "icon": "chat", "status": "ok",
+                "label_en": "Message sent to the seller", "label_ru": "Сообщение отправлено продавцу",
+                "property": res.get("property"),
+            })
+            blocks.append({
+                "kind": "link", "icon": "chat", "path": "/messages",
+                "label_en": "Open the chat", "label_ru": "Открыть диалог",
+            })
     return blocks
 
 
@@ -194,6 +221,7 @@ def agent_chat(
             "even if earlier messages or data are in another language."
         )
     working: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT + lang_instr}]
+    working.append({"role": "system", "content": f"Today's date is {datetime.utcnow().date().isoformat()} (UTC)."})
     working.extend(history)
     working.append({"role": "user", "content": data.message})
     # Reinforce language right before generation (strongest position).
@@ -263,6 +291,131 @@ def agent_chat(
         tool_calls=used_tools,
         results=_build_ui_results(tool_results),
     )
+
+
+def _build_working(db: Session, current_user: User, data: "ChatRequest", convo: AIConversation):
+    """Assemble the working transcript (system + history + user turn)."""
+    history = list(convo.messages or [])
+    lang = "ru" if str(data.lang).lower().startswith("ru") else "en"
+    if lang == "ru":
+        lang_instr = (
+            "\n\nЯЗЫК ОТВЕТА: отвечай пользователю ТОЛЬКО на русском языке, при любых обстоятельствах, "
+            "даже если предыдущие сообщения или данные на английском. Все твои ответы — на русском."
+        )
+    else:
+        lang_instr = (
+            "\n\nRESPONSE LANGUAGE: reply to the user ONLY in English under all circumstances, "
+            "even if earlier messages or data are in another language."
+        )
+    working: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT + lang_instr}]
+    working.append({"role": "system", "content": f"Today's date is {datetime.utcnow().date().isoformat()} (UTC)."})
+    working.extend(history)
+    working.append({"role": "user", "content": data.message})
+    working.append({"role": "system", "content": ("Отвечай на русском языке." if lang == "ru" else "Respond in English.")})
+    return working
+
+
+@router.post("/chat/stream")
+def agent_chat_stream(
+    data: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(rate_limit("agent")),
+):
+    """Streaming variant of /chat (Server-Sent Events).
+
+    Runs the tool-calling loop (non-streamed, since tools need full responses),
+    emits the resolved UI result blocks, then streams the final text answer
+    token-by-token so it 'types out' in the UI.
+
+    Event lines (newline-delimited JSON, SSE 'data:' frames):
+      {"type":"meta","conversation_id":N,"tool_calls":[...],"results":[...]}
+      {"type":"delta","text":"..."}            (repeated)
+      {"type":"done","reply":"<full text>"}
+      {"type":"error","detail":"..."}
+    """
+    if not is_configured():
+        raise HTTPException(status_code=503, detail="AI is not configured.")
+
+    convo = _get_or_create_conversation(db, current_user.id, data.conversation_id)
+    working = _build_working(db, current_user, data, convo)
+
+    def sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    def generate():
+        used_tools: list[str] = []
+        tool_results: list[dict] = []
+        final_text = ""
+        try:
+            # Tool-calling loop (non-streamed; tools need full responses).
+            for _ in range(MAX_TOOL_ROUNDS):
+                assistant_msg = chat_with_tools(working, TOOLS)
+                working.append(assistant_msg)
+                tool_calls = assistant_msg.get("tool_calls") or []
+                if not tool_calls:
+                    break
+                for call in tool_calls:
+                    fn = call.get("function", {})
+                    name = fn.get("name", "")
+                    used_tools.append(name)
+                    try:
+                        args = json.loads(fn.get("arguments") or "{}")
+                    except ValueError:
+                        args = {}
+                    result = execute_tool(db, current_user.id, name, args)
+                    tool_results.append({"tool": name, "result": result})
+                    working.append({
+                        "role": "tool", "tool_call_id": call.get("id", name),
+                        "name": name, "content": json.dumps(result, ensure_ascii=False),
+                    })
+
+            # Emit metadata first (conversation id + result blocks).
+            yield sse({
+                "type": "meta",
+                "conversation_id": convo.id,
+                "tool_calls": used_tools,
+                "results": _build_ui_results(tool_results),
+            })
+
+            # Always stream the FINAL answer token-by-token (no tools here), so it
+            # types out in the UI whether or not tools were used.
+            stream_msgs = list(working)
+            stream_msgs.append({
+                "role": "system",
+                "content": "Now write your final answer for the user. Do not call tools. Follow all earlier rules.",
+            })
+            acc = []
+            try:
+                for piece in chat_stream(stream_msgs, timeout=40.0):
+                    acc.append(piece)
+                    yield sse({"type": "delta", "text": piece})
+            except AIError:
+                acc = []
+            final_text = "".join(acc).strip()
+            if not final_text:
+                # Fallback: reuse any assistant content already produced.
+                for m in reversed(working):
+                    if m.get("role") == "assistant" and m.get("content"):
+                        c = m["content"]
+                        final_text = c if isinstance(c, str) else json.dumps(c)
+                        break
+                if final_text:
+                    yield sse({"type": "delta", "text": final_text})
+            working.append({"role": "assistant", "content": final_text})
+
+            # Persist (exclude system messages).
+            convo.messages = [m for m in working if m.get("role") != "system"]
+            db.commit()
+
+            yield sse({"type": "done", "reply": final_text})
+        except AIError as exc:
+            yield sse({"type": "error", "detail": str(exc)})
+        except Exception as exc:  # noqa: BLE001 — never break the stream silently
+            yield sse({"type": "error", "detail": str(exc)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+    })
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
