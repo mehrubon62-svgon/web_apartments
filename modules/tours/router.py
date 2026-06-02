@@ -111,16 +111,22 @@ def pannellum_config(
         raise HTTPException(status_code=404, detail="Tour has no rooms")
 
     scenes: dict[str, dict] = {}
+    name_by_id = {r["id"]: (r.get("name") or r["id"]) for r in rooms}
     for room in rooms:
         hotspots = []
         for link in room.get("links", []):
+            dest = link["to_room_id"]
+            # Tooltip = where this arrow leads (Street-View style: "To: Kitchen").
+            label = link.get("label") or name_by_id.get(dest) or "Go"
             hs = {
                 "type": "scene",
-                "text": link.get("label") or "Go",
+                "text": label,
                 "yaw": link.get("yaw", 0.0),
-                "pitch": link.get("pitch", 0.0),
-                "sceneId": link["to_room_id"],
-                "cssClass": "pnlm-scene-arrow",  # frontend styles this as an arrow
+                # Default arrows sit low (on the floor) like Street View if no
+                # explicit pitch was authored.
+                "pitch": link.get("pitch", -25.0),
+                "sceneId": dest,
+                "cssClass": "pnlm-scene-arrow",  # frontend styles this as a floor arrow
             }
             if link.get("target_yaw") is not None:
                 hs["targetYaw"] = link["target_yaw"]
