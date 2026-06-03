@@ -200,6 +200,12 @@ button .icn, a .icn { pointer-events: none; }
 .btn-accent { background: var(--accent); color: #f3ece0; }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger-soft { background: var(--danger-soft); color: var(--danger); }
+/* Dark theme: soft buttons had dark text on a dark soft bg (unreadable).
+   Use lighter brand/danger ink so the label always reads. */
+[data-theme="dark"] .btn-soft { color: var(--brand); }
+[data-theme="dark"] .btn-soft:hover { background: color-mix(in srgb, var(--brand-soft) 60%, var(--brand) 26%); color: #fff; }
+[data-theme="dark"] .btn-danger-soft { color: #f0a99d; }
+[data-theme="dark"] .btn-danger-soft:hover { background: var(--danger); color: #fff; }
 .btn-block { width: 100%; }
 .btn-sm { padding: 7px 12px; font-size: 13px; border-radius: var(--r-xs); }
 .btn-lg { padding: 14px 24px; font-size: 16px; border-radius: var(--r-sm); }
@@ -224,6 +230,11 @@ button .icn, a .icn { pointer-events: none; }
 .tag-ok { background: var(--ok-soft); color: var(--ok); }
 .tag-warn { background: var(--warn-soft); color: var(--warn); }
 .tag-danger { background: var(--danger-soft); color: var(--danger); }
+/* Dark theme: brighten soft-tag text so it doesn't blend into the dark bg. */
+[data-theme="dark"] .tag-rent { color: #5fc3aa; }
+[data-theme="dark"] .tag-ok { color: #6ad29a; }
+[data-theme="dark"] .tag-warn { color: #e3b35a; }
+[data-theme="dark"] .tag-danger { color: #f0a99d; }
 
 /* ===== Forms ===== */
 .field { display: block; margin-bottom: 14px; }
@@ -1068,3 +1079,83 @@ button .icn, a .icn { pointer-events: none; }
 .place-arrow-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-top: 1px solid var(--line); }
 .place-arrow-foot .muted { font-size: 13px; max-width: 60%; }
 @media (max-width: 560px) { .place-arrow-foot { flex-direction: column; align-items: stretch; } .place-arrow-foot .muted { max-width: 100%; } }
+
+/* ===== Embedded 3D tour (Matterport-style) ===== */
+.tour3d-overlay { position: fixed; inset: 0; z-index: 1200; background: #000; display: flex; flex-direction: column; animation: fadeUp .2s; }
+.tour3d-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px;
+  background: rgba(20,23,28,.92); color: #fff; flex-shrink: 0; }
+.tour3d-head .icon-btn { color: #fff; }
+.tour3d-frame { flex: 1; width: 100%; border: 0; display: block; }
+.tour3d-loading { flex: 1; display: grid; place-content: center; background: var(--bg); }
+
+/* ===== 3D tour drop zone ===== */
+.tour3d-drop { position: relative; border: 2px dashed transparent; transition: border-color .15s, background .15s; }
+.tour3d-drop.is-drag { border-color: var(--brand); background: var(--brand-soft) !important; }
+.tour3d-drop-hint { position: absolute; inset: 0; display: grid; place-content: center; font-weight: 700; color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 80%, transparent); border-radius: var(--r-md); pointer-events: none; }
+
+/* ============================================================
+   Native 3D tour viewer (Tour3DPage)
+   ============================================================ */
+.t3d-stage { position: fixed; inset: 0; background: #0c0d12; z-index: 1000; overflow: hidden; }
+.t3d-canvas { position: absolute; inset: 0; }
+.t3d-overlay-center { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; color: #fff; text-align: center; }
+.t3d-overlay-center .boot-spinner { width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.2); border-top-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; }
+
+.t3d-bar { position: absolute; z-index: 10; display: flex; gap: 6px; align-items: center;
+  background: rgba(20,23,28,.72); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.14);
+  border-radius: 14px; padding: 6px; }
+.t3d-top { top: 16px; left: 50%; transform: translateX(-50%); }
+.t3d-bottom { bottom: 18px; left: 50%; transform: translateX(-50%); }
+.t3d-bar button, .t3d-btn { border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13.5px;
+  padding: 9px 14px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; opacity: .82; transition: background .15s, opacity .15s; }
+.t3d-bar button:hover, .t3d-btn:hover { opacity: 1; }
+.t3d-bar button.on { background: var(--brand); opacity: 1; }
+.t3d-bottom button.on { background: var(--accent); }
+.t3d-modes { display: flex; gap: 4px; border-left: 1px solid rgba(255,255,255,.14); margin-left: 4px; padding-left: 6px; }
+
+.t3d-rooms { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); z-index: 10; display: flex; flex-direction: column; gap: 6px;
+  max-height: 70vh; overflow-y: auto; background: rgba(20,23,28,.72); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.14); border-radius: 14px; padding: 8px; }
+.t3d-rooms button { border: none; background: rgba(255,255,255,.08); color: #fff; font: inherit; font-weight: 600; font-size: 13px;
+  padding: 9px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; text-align: left; transition: background .15s; }
+.t3d-rooms button:hover { background: rgba(255,255,255,.16); }
+.t3d-rooms button.on { background: var(--brand); }
+
+.t3d-measure { position: absolute; bottom: 72px; left: 50%; transform: translateX(-50%); z-index: 10; color: #fff; font-weight: 700;
+  background: rgba(20,23,28,.82); padding: 8px 14px; border-radius: 100px; border: 1px solid rgba(255,255,255,.14); }
+
+.t3d-plan { position: absolute; right: 16px; bottom: 16px; z-index: 10; width: min(320px, 42vw); padding: 10px;
+  background: rgba(20,23,28,.78); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.14); border-radius: 14px; }
+.t3d-plan-ttl { color: #fff; font-size: 12px; font-weight: 700; opacity: .8; margin-bottom: 6px; padding-left: 4px; }
+.t3d-plan canvas { width: 100%; display: block; border-radius: 10px; background: rgba(0,0,0,.25); cursor: pointer; }
+
+.t3d-hotspot { width: 44px; height: 44px; border-radius: 50%; background: rgba(28,24,19,.78); border: 2px solid rgba(255,255,255,.85);
+  display: grid; place-content: center; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,.4); transition: transform .15s, background .15s; pointer-events: auto; }
+.t3d-hotspot:hover { transform: scale(1.15); background: var(--brand); }
+.t3d-hotspot svg { width: 24px; height: 24px; }
+.t3d-hotspot .t3d-tip { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  background: rgba(20,23,28,.92); color: #fff; padding: 5px 11px; border-radius: 100px; font-size: 12px; font-weight: 700; opacity: 0; transition: opacity .15s; pointer-events: none; }
+.t3d-hotspot:hover .t3d-tip { opacity: 1; }
+
+/* Street-View-style floor arrow */
+.t3d-arrow { position: relative; cursor: pointer; pointer-events: auto; }
+.t3d-arrow-disc { display: grid; place-content: center; width: 56px; height: 56px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.28), rgba(28,24,19,.5) 70%);
+  border: 2px solid rgba(255,255,255,.92); box-shadow: 0 8px 22px rgba(0,0,0,.45), inset 0 1px 6px rgba(255,255,255,.4);
+  transition: transform .18s ease, background .18s; animation: t3dPulse 2.4s ease-in-out infinite; }
+.t3d-arrow-disc svg { width: 30px; height: 30px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.t3d-arrow:hover .t3d-arrow-disc { transform: scale(1.18); background: radial-gradient(circle at 50% 35%, rgba(194,80,46,.75), rgba(120,40,18,.7) 75%); }
+.t3d-arrow .t3d-tip { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  background: rgba(20,23,28,.94); color: #fff; padding: 5px 11px; border-radius: 100px; font-size: 12px; font-weight: 700; opacity: 0; transition: opacity .15s; pointer-events: none; }
+.t3d-arrow:hover .t3d-tip { opacity: 1; }
+@keyframes t3dPulse { 0%,100% { box-shadow: 0 8px 22px rgba(0,0,0,.45), inset 0 1px 6px rgba(255,255,255,.4), 0 0 0 0 rgba(255,255,255,.0); } 50% { box-shadow: 0 8px 22px rgba(0,0,0,.45), inset 0 1px 6px rgba(255,255,255,.4), 0 0 0 8px rgba(255,255,255,.06); } }
+
+/* dollhouse node label */
+.t3d-node-label { background: rgba(20,23,28,.86); color: #fff; font-size: 12px; font-weight: 700; padding: 4px 10px;
+  border-radius: 100px; border: 1px solid rgba(255,255,255,.18); white-space: nowrap; cursor: pointer; pointer-events: auto; transition: background .15s; }
+.t3d-node-label:hover { background: var(--brand); }
+
+/* transient hint pill */
+.t3d-hint { position: absolute; top: 74px; left: 50%; transform: translateX(-50%); z-index: 10; color: #fff; font-size: 12.5px; font-weight: 600;
+  background: rgba(20,23,28,.7); backdrop-filter: blur(10px); padding: 7px 14px; border-radius: 100px; border: 1px solid rgba(255,255,255,.14); pointer-events: none; }
+@media (max-width: 720px) { .t3d-rooms { display: none; } .t3d-plan { width: 60vw; } }

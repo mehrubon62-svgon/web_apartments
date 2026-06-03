@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, NavLink, useNavigate, Outlet } from 'react-router-dom';
+import { Link, NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { Icon } from '../lib/icons.jsx';
 import { useApp } from '../lib/store.jsx';
 import { useI18n } from '../lib/i18n.jsx';
 import { api } from '../lib/api.js';
 import { Avatar } from './Common.jsx';
 import { AgentWidget } from './AgentWidget.jsx';
+import { ErrorBoundary } from './ErrorBoundary.jsx';
 import { timeAgo } from '../lib/format.js';
 
 const NOTIF_ICON = {
@@ -26,6 +27,7 @@ export function Layout() {
   const { user, isSeller, isAdmin, theme, setTheme, unread } = useApp();
   const { lang, setLang, t } = useI18n();
   const nav = useNavigate();
+  const location = useLocation();
   const [notifOpen, setNotifOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -70,7 +72,7 @@ export function Layout() {
         </div>
       </header>
 
-      <main id="main-content"><Outlet /></main>
+      <main id="main-content"><ErrorBoundary routeKey={location.pathname}><Outlet /></ErrorBoundary></main>
 
       <Footer />
 

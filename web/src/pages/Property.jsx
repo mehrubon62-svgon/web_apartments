@@ -105,7 +105,9 @@ function Gallery({ p, photos }) {
     <div className="gallery">
       <div className="gallery-main">
         {active ? <img src={mediaUrl(active)} alt={p.title} /> : <div className="ph"><Icon name="home" size={60} /></div>}
-        {p.has_tour && <button className="gallery-tour-btn" onClick={() => nav(`/properties/${p.id}/tour`)}><Icon name="globe" /> Открыть 360° тур</button>}
+        {p.has_3d_tour
+          ? <button className="gallery-tour-btn" onClick={() => nav(`/properties/${p.id}/tour3d`)}><Icon name="building" /> Открыть 3D-тур</button>
+          : (p.has_tour && <button className="gallery-tour-btn" onClick={() => nav(`/properties/${p.id}/tour`)}><Icon name="globe" /> Открыть 360° тур</button>)}
       </div>
       {photos.length > 1 && (
         <div className="gallery-thumbs">
@@ -426,7 +428,9 @@ function Sidebar({ p, isOwner, user, setModal }) {
 
       <div className="card card-pad">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {p.has_tour && <button className="btn btn-primary btn-block btn-lg" onClick={() => nav(`/properties/${p.id}/tour`)}><Icon name="globe" /> Открыть 360° тур</button>}
+          {p.has_3d_tour
+            ? <button className="btn btn-primary btn-block btn-lg" onClick={() => nav(`/properties/${p.id}/tour3d`)}><Icon name="building" /> Открыть 3D-тур</button>
+            : (p.has_tour && <button className="btn btn-primary btn-block btn-lg" onClick={() => nav(`/properties/${p.id}/tour`)}><Icon name="globe" /> Открыть 360° тур</button>)}
           {!isOwner ? <>
             {p.deal_type === 'rent'
               ? <button className="btn btn-accent btn-block" onClick={() => requireAuth() && setModal(<BookingModal p={p} onClose={() => setModal(null)} />)}><Icon name="calendar" /> Забронировать</button>
@@ -621,5 +625,26 @@ function ShareModal({ p, onClose }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Fullscreen 3D-tour viewer (Three.js) embedded via iframe.
+function Tour3DModal({ p, onClose }) {
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  const [url, setUrl] = useState(undefined);
+  useEffect(() => {
+    api.get3dTour(p.id).then((d) => setUrl(d.viewer_url)).catch(() => setUrl(null));
+  }, [p.id]);
+  return (
+    <div className="tour3d-overlay">
+      <div className="tour3d-head">
+        <strong>{L('3D-тур', '3D tour')} — {p.title}</strong>
+        <button className="icon-btn" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      {url === undefined ? <div className="tour3d-loading"><Spinner big /></div>
+        : url ? <iframe className="tour3d-frame" src={url} title="3D tour" allow="fullscreen; xr-spatial-tracking" />
+        : <div className="tour3d-loading"><Empty icon="building" title={L('3D-тур недоступен', '3D tour unavailable')} /></div>}
+    </div>
   );
 }

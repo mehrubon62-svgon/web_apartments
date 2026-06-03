@@ -76,6 +76,7 @@ class PropertyOut(BaseModel):
     cover_url: str | None = None   # main card image (a photo, never a 360 panorama)
     media: list[MediaOut] = []
     has_tour: bool = False
+    has_3d_tour: bool = False
     is_favorited: bool = False
     avg_rating: float | None = None
     seller_rating: float | None = None

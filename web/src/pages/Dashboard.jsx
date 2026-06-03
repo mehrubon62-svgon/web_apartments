@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useApp } from '../lib/store.jsx';
@@ -108,6 +108,21 @@ function PropertyEditor({ existing, onClose, onDone }) {
     if (!file) return; const fd = new FormData(); fd.append('file', file);
     try { toast('Загрузка...', 'info'); const r = await api.upload(fd); setMedia((m) => [...m, { url: r.url, type: kind, order: m.length }]); } catch (e) { toast(e.message, 'err'); }
   }
+  // Programmatic image picker — reliable in Safari (label+hidden input often
+  // fails to open the dialog inside a modal).
+  function pickImage(kind) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.style.position = 'fixed'; inp.style.left = '-9999px';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', () => {
+      const fl = inp.files && inp.files[0];
+      try { document.body.removeChild(inp); } catch {}
+      if (fl) upload(fl, kind);
+    }, { once: true });
+    inp.click();
+  }
   async function save() {
     const payload = {
       title: f.title.trim(), description: f.description.trim() || null, type: f.type, deal_type: f.deal_type,
@@ -145,8 +160,8 @@ function PropertyEditor({ existing, onClose, onDone }) {
       <div className="field">
         <label>Фото и 360°-панорамы</label>
         <div className="row" style={{ gap: 8 }}>
-          <label className="btn btn-soft btn-sm"><Icon name="image" /> Добавить фото<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload(e.target.files[0], 'photo')} /></label>
-          <label className="btn btn-soft btn-sm"><Icon name="globe" /> Добавить 360°<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload(e.target.files[0], '360')} /></label>
+          <button type="button" className="btn btn-soft btn-sm" onClick={() => pickImage('photo')}><Icon name="image" /> Добавить фото</button>
+          <button type="button" className="btn btn-soft btn-sm" onClick={() => pickImage('360')}><Icon name="globe" /> Добавить 360°</button>
         </div>
         <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
           {media.map((m, i) => (
@@ -162,140 +177,103 @@ function PropertyEditor({ existing, onClose, onDone }) {
 }
 
 function TourEditor({ p, onClose }) {
-  const toast = useToast();
-  const [rooms, setRooms] = useState([]);
-  const [first, setFirst] = useState(null);
-  useEffect(() => { api.getTour(p.id).then((t) => { setRooms(t.rooms.map((r) => ({ ...r, links: r.links || [] }))); setFirst(t.first_room_id); }).catch(() => { setRooms([]); }); }, [p.id]);
-
-  function upd(i, patch) { setRooms((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r))); }
-  async function uploadPano(i, file) {
-    if (!file) return; const fd = new FormData(); fd.append('file', file);
-    try { const up = await api.upload(fd); upd(i, { media_url: up.url }); toast('Панорама загружена', 'ok'); } catch (e) { toast(e.message, 'err'); }
-  }
-  async function save() {
-    if (!rooms.length) return toast('Добавьте хотя бы одну комнату', 'err');
-    for (const r of rooms) if (!r.id || !r.media_url) return toast('У каждой комнаты должны быть ID и панорама', 'err');
-    // Strip UI-only fields (e.g. _placed) before sending to the API.
-    const clean = rooms.map((r) => ({
-      ...r,
-      links: (r.links || [])
-        .filter((l) => l.to_room_id)
-        .map((l) => ({ to_room_id: l.to_room_id, yaw: l.yaw ?? 0, pitch: l.pitch ?? -10, target_yaw: l.target_yaw ?? null, label: l.label || null })),
-    }));
-    try { await api.upsertTour(p.id, { rooms: clean, first_room_id: first || rooms[0].id }); toast('Тур сохранён', 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); }
-  }
-
+  const { lang } = useI18n();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
   return (
-    <Modal title={`Редактор 360°-тура — ${p.title}`} onClose={onClose} large footer={<button className="btn btn-primary" onClick={save}>Сохранить тур</button>}>
-      <p className="hint mb-8">Каждая комната — панорама. Переходы между комнатами работают как стрелки в Google Street View.</p>
-      {rooms.map((r, i) => (
-        <div key={i} className="card card-pad mb-16">
-          <div className="row-between mb-8">
-            <strong>Комната {i + 1}</strong>
-            <div className="row" style={{ gap: 6 }}>
-              <label className="row" style={{ gap: 4, fontSize: 13 }}><input type="radio" name="firstroom" checked={first === r.id} onChange={() => setFirst(r.id)} /> Стартовая</label>
-              <button className="btn btn-danger-soft btn-sm" onClick={() => setRooms((rs) => rs.filter((_, j) => j !== i))}><Icon name="trash" /></button>
-            </div>
-          </div>
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div className="field" style={{ margin: 0 }}><label>ID</label><input className="input" value={r.id} onChange={(e) => upd(i, { id: e.target.value.trim() })} /></div>
-            <div className="field" style={{ margin: 0 }}><label>Название</label><input className="input" value={r.name || ''} onChange={(e) => upd(i, { name: e.target.value })} /></div>
-          </div>
-          <div className="field" style={{ margin: '8px 0 0' }}><label>Панорама (URL или загрузка)</label>
-            <div className="row" style={{ gap: 6 }}>
-              <input className="input" value={r.media_url || ''} onChange={(e) => upd(i, { media_url: e.target.value })} placeholder="URL панорамы" />
-              <label className="btn btn-soft btn-sm"><Icon name="upload" /><input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPano(i, e.target.files[0])} /></label>
-            </div>
-          </div>
-          <RoomLinks room={r} rooms={rooms} onChange={(links) => upd(i, { links })} />
-        </div>
-      ))}
-      <button className="btn btn-soft" onClick={() => setRooms((rs) => [...rs, { id: 'room' + (rs.length + 1), name: '', media_url: '', links: [] }])}><Icon name="plus" /> Добавить комнату</button>
+    <Modal title={`${L('3D / 360°-тур', '3D / 360° tour')} — ${p.title}`} onClose={onClose} large
+      footer={<button className="btn btn-primary" onClick={onClose}>{L('Готово', 'Done')}</button>}>
+      <p className="hint mb-8">
+        {L('Загрузите ZIP-архив тура (Matterport или skyboxes/+metadata.json). Комнаты, связи между ними и план уже заложены в файле — расставлять ничего вручную не нужно.',
+           'Upload the tour ZIP (Matterport or skyboxes/+metadata.json). Rooms, their links and the floor plan are already inside the file — nothing to place manually.')}
+      </p>
+      <Tour3DUpload propertyId={p.id} />
     </Modal>
   );
 }
-function RoomLinks({ room, rooms, onChange }) {
+function Tour3DUpload({ propertyId }) {
   const { lang } = useI18n();
+  const toast = useToast();
   const L = (ru, en) => (lang === 'ru' ? ru : en);
-  const links = room.links || [];
-  const [placing, setPlacing] = useState(null); // index of the link being placed
-  const upd = (i, patch) => onChange(links.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-  const others = rooms.filter((x) => x.id !== room.id);
-  return (
-    <div style={{ marginTop: 8 }}>
-      <label className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{L('Переходы (стрелки в другие комнаты)', 'Transitions (arrows to other rooms)')}</label>
-      {links.map((l, i) => {
-        const placed = l.yaw != null && l._placed;
-        const destName = others.find((x) => x.id === l.to_room_id);
-        return (
-          <div key={i} className="row" style={{ gap: 6, marginBottom: 6 }}>
-            <span>→</span>
-            <select className="select" style={{ flex: 1 }} value={l.to_room_id || ''} onChange={(e) => upd(i, { to_room_id: e.target.value })}>
-              <option value="">—</option>{others.map((x) => <option key={x.id} value={x.id}>{x.name || x.id}</option>)}
-            </select>
-            <button className={`btn btn-sm ${placed ? 'btn-soft' : 'btn-primary'}`} disabled={!room.media_url || !l.to_room_id}
-              onClick={() => setPlacing(i)} title={L('Указать направление на панораме', 'Point the direction on the panorama')}>
-              <Icon name="pin" /> {placed ? L('Указано', 'Set') : L('Указать на туре', 'Point on tour')}
-            </button>
-            <button className="btn btn-danger-soft btn-sm" onClick={() => onChange(links.filter((_, j) => j !== i))}><Icon name="close" /></button>
-          </div>
-        );
-      })}
-      <button className="btn btn-ghost btn-sm" onClick={() => onChange([...links, { to_room_id: '', yaw: 0, pitch: -10 }])}><Icon name="plus" /> {L('переход', 'transition')}</button>
+  const [info, setInfo] = useState(undefined);   // undefined=loading, null=none, obj=present
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  useEffect(() => { api.get3dTour(propertyId).then(setInfo).catch(() => setInfo(null)); }, [propertyId]);
 
-      {placing != null && (
-        <PlaceArrow
-          panorama={room.media_url}
-          initial={{ yaw: links[placing].yaw ?? 0, pitch: links[placing].pitch ?? -10 }}
-          destName={(others.find((x) => x.id === links[placing].to_room_id) || {}).name || links[placing].to_room_id}
-          onClose={() => setPlacing(null)}
-          onPick={({ yaw, pitch, target_yaw }) => { upd(placing, { yaw, pitch, target_yaw, _placed: true }); setPlacing(null); }}
-        />
-      )}
-    </div>
-  );
-}
-
-// Visual arrow placement: shows the panorama; the seller looks toward the
-// doorway and clicks "Place here". We capture yaw/pitch from the live camera —
-// no manual degrees. target_yaw defaults to looking back where they came from.
-function PlaceArrow({ panorama, initial, destName, onClose, onPick }) {
-  const { lang } = useI18n();
-  const L = (ru, en) => (lang === 'ru' ? ru : en);
-  const ref = useRef(null);
-  const viewer = useRef(null);
-  useEffect(() => {
-    if (!window.pannellum || !ref.current) return;
-    viewer.current = window.pannellum.viewer(ref.current, {
-      type: 'equirectangular', panorama, autoLoad: true,
-      yaw: initial.yaw || 0, pitch: initial.pitch || -10, hfov: 100, showControls: false,
-    });
-    return () => { try { viewer.current.destroy(); } catch {} };
-  }, [panorama]);
-  function place() {
-    const v = viewer.current;
-    const yaw = v && v.getYaw ? Math.round(v.getYaw()) : (initial.yaw || 0);
-    const pitch = v && v.getPitch ? Math.round(v.getPitch()) : -10;
-    // arriving in the next room, face roughly back toward this doorway
-    const target_yaw = ((yaw + 180 + 180) % 360) - 180;
-    onPick({ yaw, pitch, target_yaw });
+  // Open a fresh, attribute-free file dialog on demand. Building the input in the
+  // click handler (no `accept`, not tied to the modal DOM) guarantees the ZIP is
+  // selectable in Safari/macOS — no greyed-out files, no label quirks.
+  function pickZip() {
+    if (busy) return;
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.style.position = 'fixed';
+    inp.style.left = '-9999px';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      try { document.body.removeChild(inp); } catch {}
+      if (!f) { toast(L('Файл не выбран', 'No file chosen'), 'info'); return; }
+      upload(f);
+    }, { once: true });
+    inp.click();
   }
+
+  function onDrop(e) {
+    e.preventDefault(); setDrag(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) upload(f);
+  }
+
+  async function upload(file) {
+    if (!file) return;
+    // Accept by extension OR by zip mime (covers macOS x-zip-compressed/octet-stream).
+    const okExt = /\.zip$/i.test(file.name);
+    const okMime = /zip/i.test(file.type || '');
+    if (!okExt && !okMime) {
+      toast(L(`Нужен ZIP. Выбран: ${file.name}`, `Need a ZIP. Got: ${file.name}`), 'err');
+      return;
+    }
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await api.upload3dTour(propertyId, fd);
+      setInfo(res);
+      toast(res.metadata_generated
+        ? L('3D-тур загружен (metadata.json создан автоматически)', '3D tour uploaded (metadata.json auto-generated)')
+        : L('3D-тур загружен', '3D tour uploaded'), 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+    finally { setBusy(false); }
+  }
+  async function remove() {
+    if (!confirm(L('Удалить 3D-тур?', 'Remove the 3D tour?'))) return;
+    try { await api.delete3dTour(propertyId); setInfo(null); toast(L('3D-тур удалён', '3D tour removed'), 'ok'); }
+    catch (e) { toast(e.message, 'err'); }
+  }
+
+  const has = info && info.base;
   return (
-    <div className="place-arrow-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="place-arrow-box">
-        <div className="place-arrow-head">
-          <strong>{L('Куда ведёт стрелка', 'Where the arrow leads')}: {destName}</strong>
-          <button className="icon-btn" onClick={onClose}><Icon name="close" /></button>
+    <div className={`card card-pad mb-16 tour3d-drop ${drag ? 'is-drag' : ''}`} style={{ background: 'var(--surface-2)' }}
+      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={onDrop}>
+      <div className="row-between" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <strong style={{ fontSize: 15 }}><Icon name="building" /> {L('3D-тур (Matterport)', '3D tour (Matterport)')} <span style={{ fontSize: 10, opacity: .5, fontWeight: 400 }}>v3-drop</span></strong>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 4, maxWidth: 460 }}>
+            {L('Перетащите ZIP сюда или нажмите кнопку. Внутри — skyboxes/, mesh/, metadata.json (или дамп Matterport). metadata создадим автоматически.',
+               'Drag a ZIP here or click the button. Inside: skyboxes/, mesh/, metadata.json (or a Matterport dump). We generate metadata if missing.')}
+          </div>
         </div>
-        <div className="place-arrow-stage">
-          <div ref={ref} className="place-arrow-pano" />
-          <div className="place-arrow-reticle" aria-hidden="true"><Icon name="plus" size={34} /></div>
-        </div>
-        <div className="place-arrow-foot">
-          <span className="muted">{L('Поверните вид на дверной проём в эту комнату и нажмите кнопку.', 'Turn the view to the doorway into this room, then click the button.')}</span>
-          <button className="btn btn-primary" onClick={place}><Icon name="pin" /> {L('Поставить стрелку здесь', 'Place the arrow here')}</button>
+        <div className="row" style={{ gap: 8 }}>
+          {has && <a className="btn btn-ghost btn-sm" href={info.viewer_url} target="_blank" rel="noreferrer"><Icon name="globe" /> {L('Открыть', 'Open')}</a>}
+          {has && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={remove}><Icon name="trash" /></button>}
+          <button type="button" className="btn btn-soft btn-sm" disabled={busy} onClick={pickZip}>
+            {busy ? <span className="spinner-sm" /> : <Icon name="upload" />} {has ? L('Заменить ZIP', 'Replace ZIP') : L('Загрузить ZIP', 'Upload ZIP')}
+          </button>
         </div>
       </div>
+      {has && <div className="tag tag-ok" style={{ marginTop: 10 }}><Icon name="check" /> {L('3D-тур активен', '3D tour active')}</div>}
+      {drag && <div className="tour3d-drop-hint">{L('Отпустите файл здесь', 'Drop the file here')}</div>}
     </div>
   );
 }

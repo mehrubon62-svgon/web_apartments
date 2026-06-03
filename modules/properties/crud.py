@@ -274,6 +274,12 @@ def has_tour(db: Session, property_id: int) -> bool:
     return db.query(Tour).filter(Tour.property_id == property_id).first() is not None
 
 
+def has_3d_tour(db: Session, property_id: int) -> bool:
+    """True if a Matterport-style 3D tour (uploaded ZIP) exists for this property."""
+    tour = db.query(Tour).filter(Tour.property_id == property_id).first()
+    return bool(tour and isinstance(tour.rooms, dict) and (tour.rooms or {}).get("model3d"))
+
+
 def cover_url(prop: Property) -> str | None:
     """Card cover = the first real PHOTO (never a 360 panorama, which looks
     distorted as a flat thumbnail). Falls back to the lowest-order media if a

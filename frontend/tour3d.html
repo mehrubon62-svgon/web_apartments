@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Nestora 3D Tour</title>
+
+<!--
+  ============================================================================
+  Nestora — 3D-тур квартиры (Matterport-подобный), один файл, на Three.js.
+  ----------------------------------------------------------------------------
+  Режимы:
+    1) Панорама (360°) — сфера с equirectangular-текстурой из skyboxes/.
+    2) Кукольный домик — 3D-модель mesh/model.glb, орбитальная камера.
+    3) План этажа — 2D-схема (картинка или авто-схема из координат комнат).
+  Плюс: навигация между комнатами (хотспоты + список), линейка (измерение),
+        адаптивность (мышь/тач), полностью локальные данные.
+
+  ОФЛАЙН-РЕЖИМ:
+    Этот файл грузит Three.js через import map с CDN (работает онлайн и через
+    локальный сервер). Для полного офлайна (file://) скачай three.module.js и
+    аддоны в папку ./vendor/ и замени URL в import map на относительные пути:
+      "three": "./vendor/three.module.js",
+      "three/addons/": "./vendor/addons/"
+    Открывать лучше через локальный сервер (python3 -m http.server),
+    т.к. браузеры блокируют fetch() текстур/JSON по file://.
+  ============================================================================
+-->
+
+<style>
+  :root {
+    --brand: #c2502e; --accent: #1f5c4d; --ink: #1c1813;
+    --panel: rgba(20, 23, 28, 0.72); --panel-line: rgba(255,255,255,0.14);
+    --font: 'Hanken Grotesk', system-ui, -apple-system, Segoe UI, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: var(--font); color: #fff; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; touch-action: none; }
+
+  /* Floating glass panels */
+  .panel { position: absolute; background: var(--panel); backdrop-filter: blur(12px);
+           border: 1px solid var(--panel-line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+
+  /* Mode switch (top center) */
+  #modes { top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; z-index: 10; }
+  #modes button { border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13.5px;
+                  padding: 9px 16px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+                  transition: background .15s; opacity: .8; }
+  #modes button.active { background: var(--brand); opacity: 1; }
+  #modes button:hover { opacity: 1; }
+
+  /* Current room + selector (top left) */
+  #roombar { top: 16px; left: 16px; padding: 12px 14px; z-index: 10; min-width: 200px; }
+  #roombar .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .6; }
+  #roombar .current { font-size: 18px; font-weight: 700; margin: 2px 0 10px; }
+  #roomSelect { width: 100%; background: rgba(0,0,0,.35); color: #fff; border: 1px solid var(--panel-line);
+                border-radius: 9px; padding: 9px 10px; font: inherit; font-weight: 600; }
+
+  /* Tools (bottom center) */
+  #tools { bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; z-index: 10; }
+  #tools button { border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13px;
+                  padding: 9px 14px; border-radius: 10px; cursor: pointer; opacity: .85; display: inline-flex; gap: 6px; align-items: center; }
+  #tools button.active { background: var(--accent); opacity: 1; }
+
+  /* Floorplan overlay */
+  #planWrap { right: 16px; bottom: 16px; width: min(320px, 42vw); padding: 10px; z-index: 10; display: none; }
+  #planWrap.show { display: block; }
+  #planWrap .ttl { font-size: 12px; font-weight: 700; opacity: .8; margin-bottom: 6px; padding-left: 4px; }
+  #plan { width: 100%; border-radius: 10px; display: block; background: rgba(0,0,0,.25); cursor: pointer; }
+
+  /* Measurement readout */
+  #measureInfo { bottom: 70px; left: 50%; transform: translateX(-50%); padding: 8px 14px; z-index: 10;
+                 font-weight: 700; display: none; }
+  #measureInfo.show { display: block; }
+
+  /* Hotspot labels (CSS2D) */
+  .hotspot { width: 44px; height: 44px; border-radius: 50%; background: rgba(28,24,19,.78);
+             border: 2px solid rgba(255,255,255,.85); display: grid; place-content: center; cursor: pointer;
+             box-shadow: 0 6px 16px rgba(0,0,0,.4); transition: transform .15s, background .15s; pointer-events: auto; }
+  .hotspot:hover { transform: scale(1.15); background: var(--brand); }
+  .hotspot svg { width: 24px; height: 24px; }
+  .hotspot .tip { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+                  background: rgba(20,23,28,.92); padding: 5px 11px; border-radius: 100px; font-size: 12px; font-weight: 700;
+                  opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .hotspot:hover .tip { opacity: 1; }
+
+  #loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 14px; justify-items: center;
+             background: #0c0d12; z-index: 50; transition: opacity .4s; }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  .spinner { width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.2); border-top-color: var(--brand);
+             border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #hint { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); z-index: 9; font-size: 13px;
+          background: rgba(20,23,28,.7); padding: 7px 14px; border-radius: 100px; pointer-events: none; opacity: 0; transition: opacity .3s; }
+  #hint.show { opacity: 1; }
+  #err { position: absolute; inset: 0; display: none; place-content: center; text-align: center; padding: 30px; z-index: 60; }
+</style>
+
+<!-- Import map: three core + addons. Replace with ./vendor/ for offline file://. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="loading"><div class="spinner"></div><div>Загрузка тура…</div></div>
+<div id="err" class="panel"><div><h2>Не удалось загрузить тур</h2><p id="errmsg" style="opacity:.8"></p></div></div>
+
+<!-- Mode switch -->
+<div id="modes" class="panel">
+  <button data-mode="pano" class="active">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18"/></svg>
+    Панорама
+  </button>
+  <button data-mode="doll">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>
+    Кукольный домик
+  </button>
+  <button data-mode="plan">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
+    План
+  </button>
+</div>
+
+<!-- Current room + selector -->
+<div id="roombar" class="panel">
+  <div class="label">Текущая комната</div>
+  <div class="current" id="curRoom">—</div>
+  <select id="roomSelect"></select>
+</div>
+
+<!-- Tools -->
+<div id="tools" class="panel">
+  <button id="measureBtn">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></svg>
+    Линейка
+  </button>
+  <button id="resetBtn">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9a5 5 0 0 1 9-3l3 3"/><path d="m16 3 .5 6-6-.5"/></svg>
+    Сброс вида
+  </button>
+</div>
+
+<div id="measureInfo" class="panel"></div>
+<div id="hint">Перетащите для осмотра • колесо — зум</div>
+
+<!-- Floorplan -->
+<div id="planWrap" class="panel">
+  <div class="ttl">План этажа</div>
+  <canvas id="plan" width="600" height="400"></canvas>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ============================================================================
+// 0. Config / data loading
+// ============================================================================
+// The data folder ("skyboxes/", "mesh/", "metadata.json") is passed via the
+// ?base= query param when embedded in Nestora, e.g. /media-files/tours3d/5/.
+// Falls back to "./" for standalone local testing.
+const _params = new URLSearchParams(location.search);
+let BASE = _params.get('base') || './';
+if (!BASE.endsWith('/')) BASE += '/';
+const $ = (s) => document.querySelector(s);
+const errEl = $('#err'), loadingEl = $('#loading');
+
+function fail(msg) {
+  loadingEl.classList.add('hide');
+  errEl.style.display = 'grid';
+  $('#errmsg').textContent = msg;
+  console.error(msg);
+}
+
+// Default metadata if metadata.json is missing — keeps the viewer usable.
+const FALLBACK_META = {
+  name: 'Demo tour', startRoom: 'room1', scale: 1,
+  rooms: [{ id: 'room1', name: 'Комната 1', skybox: 'skyboxes/1.jpg', camera: { x: 0, y: 1.6, z: 0 }, initialYaw: 0, links: [], plan: { x: 0.5, y: 0.5 } }],
+  floorplan: { image: null, width: 600, height: 400 },
+  measurements: [],
+};
+
+let META = null;
+try {
+  const res = await fetch(BASE + 'metadata.json', { cache: 'no-cache' });
+  META = res.ok ? await res.json() : null;
+} catch { META = null; }
+if (!META) { META = FALLBACK_META; console.warn('metadata.json не найден — использую запасные данные.'); }
+
+const ROOMS = META.rooms || [];
+const ROOM_BY_ID = Object.fromEntries(ROOMS.map((r) => [r.id, r]));
+const SCALE = META.scale || 1;
+
+// ============================================================================
+// 1. Renderer / scene / cameras
+// ============================================================================
+const app = $('#app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+app.appendChild(renderer.domElement);
+
+// CSS2D layer for hotspots (HTML labels positioned in 3D).
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+app.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+
+// Panorama camera sits at origin; we rotate it in place.
+const panoCam = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1100);
+panoCam.position.set(0, 0, 0.01);
+
+// Dollhouse camera orbits the model.
+const dollCam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 1000);
+dollCam.position.set(6, 7, 9);
+
+let activeCam = panoCam;
+
+// ============================================================================
+// 2. Panorama sphere
+// ============================================================================
+const texLoader = new THREE.TextureLoader();
+const sphereGeo = new THREE.SphereGeometry(500, 60, 40);
+sphereGeo.scale(-1, 1, 1);                 // invert so texture faces inward
+const sphereMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+const panoSphere = new THREE.Mesh(sphereGeo, sphereMat);
+scene.add(panoSphere);
+
+function loadPanorama(room) {
+  if (!room?.skybox) return;
+  texLoader.load(
+    BASE + room.skybox,
+    (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      if (sphereMat.map) sphereMat.map.dispose();
+      sphereMat.map = tex; sphereMat.needsUpdate = true;
+    },
+    undefined,
+    () => console.warn('Не удалось загрузить панораму:', room.skybox)
+  );
+}
+
+// ============================================================================
+// 3. Controls
+// ============================================================================
+// Panorama: classic lon/lat drag controller — camera fixed at center, we aim it
+// by spherical angles. Robust (no OrbitControls jitter) and makes initialYaw
+// land exactly. Works with mouse + touch; wheel/pinch zoom via FOV.
+const panoView = { lon: 0, lat: 0, targetLon: 0, targetLat: 0 };
+let panoDragging = false, panoPrev = { x: 0, y: 0 }, pinchDist = 0;
+
+function aimPano() {
+  const phi = THREE.MathUtils.degToRad(90 - panoView.lat);
+  const theta = THREE.MathUtils.degToRad(panoView.lon);
+  panoCam.lookAt(
+    500 * Math.sin(phi) * Math.cos(theta),
+    500 * Math.cos(phi),
+    500 * Math.sin(phi) * Math.sin(theta)
+  );
+}
+function panoDown(e) {
+  if (MODE !== 'pano' || MEASURE) return;
+  panoDragging = true;
+  const p = e.touches ? e.touches[0] : e;
+  panoPrev = { x: p.clientX, y: p.clientY };
+  if (e.touches && e.touches.length === 2) {
+    pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }
+}
+function panoMove(e) {
+  if (!panoDragging || MODE !== 'pano') return;
+  if (e.touches && e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (pinchDist) { panoCam.fov = THREE.MathUtils.clamp(panoCam.fov - (d - pinchDist) * 0.1, 35, 90); panoCam.updateProjectionMatrix(); }
+    pinchDist = d; return;
+  }
+  const p = e.touches ? e.touches[0] : e;
+  panoView.targetLon -= (p.clientX - panoPrev.x) * 0.12;
+  panoView.targetLat = THREE.MathUtils.clamp(panoView.targetLat + (p.clientY - panoPrev.y) * 0.12, -85, 85);
+  panoPrev = { x: p.clientX, y: p.clientY };
+}
+function panoUp() { panoDragging = false; pinchDist = 0; }
+renderer.domElement.addEventListener('mousedown', panoDown);
+renderer.domElement.addEventListener('mousemove', panoMove);
+window.addEventListener('mouseup', panoUp);
+renderer.domElement.addEventListener('touchstart', panoDown, { passive: true });
+renderer.domElement.addEventListener('touchmove', panoMove, { passive: true });
+renderer.domElement.addEventListener('touchend', panoUp);
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (MODE !== 'pano') return;
+  panoCam.fov = THREE.MathUtils.clamp(panoCam.fov + e.deltaY * 0.05, 35, 90);
+  panoCam.updateProjectionMatrix();
+}, { passive: true });
+
+// Dollhouse: orbit the model.
+const dollControls = new OrbitControls(dollCam, renderer.domElement);
+dollControls.enableDamping = true; dollControls.dampingFactor = 0.08;
+dollControls.maxPolarAngle = Math.PI / 2.05;
+dollControls.enabled = false;
+
+// ============================================================================
+// 4. Hotspots (navigation arrows on the panorama)
+// ============================================================================
+const hotspotGroup = new THREE.Group();
+scene.add(hotspotGroup);
+
+function clearHotspots() {
+  [...hotspotGroup.children].forEach((c) => { hotspotGroup.remove(c); if (c.element) c.element.remove(); });
+}
+// yaw/pitch (deg) -> a point on the sphere around the viewer
+function dirFromAngles(yawDeg, pitchDeg, radius = 60) {
+  const yaw = THREE.MathUtils.degToRad(yawDeg), pitch = THREE.MathUtils.degToRad(pitchDeg);
+  return new THREE.Vector3(
+    radius * Math.cos(pitch) * Math.sin(yaw),
+    radius * Math.sin(pitch),
+    radius * Math.cos(pitch) * Math.cos(yaw)
+  );
+}
+function buildHotspots(room) {
+  clearHotspots();
+  (room.links || []).forEach((link) => {
+    const dest = ROOM_BY_ID[link.to];
+    const el = document.createElement('div');
+    el.className = 'hotspot';
+    el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 11l6-6 6 6"/></svg><span class="tip">${dest ? dest.name : link.to}</span>`;
+    el.addEventListener('click', (e) => { e.stopPropagation(); goToRoom(link.to); });
+    const obj = new CSS2DObject(el);
+    obj.position.copy(dirFromAngles(link.yaw ?? 0, link.pitch ?? -8));
+    hotspotGroup.add(obj);
+  });
+}
+
+// ============================================================================
+// 5. Dollhouse model + clickable room markers
+// ============================================================================
+const dollGroup = new THREE.Group();
+dollGroup.visible = false;
+scene.add(dollGroup);
+let modelMesh = null;          // for raycast measuring
+const roomMarkers = new THREE.Group();
+dollGroup.add(roomMarkers);
+
+function addRoomMarkers() {
+  ROOMS.forEach((r) => {
+    const c = r.camera || { x: 0, y: 0, z: 0 };
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xc2502e })
+    );
+    m.position.set(c.x * SCALE, (c.y || 1.2) * SCALE, c.z * SCALE);
+    m.userData.roomId = r.id;
+    roomMarkers.add(m);
+
+    const el = document.createElement('div');
+    el.className = 'hotspot'; el.style.width = el.style.height = '30px';
+    el.innerHTML = `<span class="tip" style="opacity:1;bottom:34px">${r.name}</span>`;
+    el.addEventListener('click', () => goToRoom(r.id));
+    const label = new CSS2DObject(el);
+    label.position.copy(m.position);
+    roomMarkers.add(label);
+  });
+}
+
+function loadModel() {
+  if (!META.mesh) { addRoomMarkers(); return; }
+  new GLTFLoader().load(
+    BASE + META.mesh,
+    (gltf) => {
+      const model = gltf.scene;
+      model.traverse((o) => { if (o.isMesh && !modelMesh) modelMesh = o; });
+      dollGroup.add(model);
+      // center & frame the model
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      dollControls.target.copy(center);
+      const size = box.getSize(new THREE.Vector3()).length();
+      dollCam.position.copy(center).add(new THREE.Vector3(size * 0.5, size * 0.5, size * 0.6));
+      addRoomMarkers();
+    },
+    undefined,
+    () => { console.warn('mesh не найден — показываю только маркеры комнат.'); addRoomMarkers(); }
+  );
+}
+loadModel();
+
+// ============================================================================
+// 6. Measurement tool (works in dollhouse against real mesh => meters)
+// ============================================================================
+let MEASURE = false;
+let measurePts = [];
+const measureGroup = new THREE.Group();
+scene.add(measureGroup);
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function clearMeasure() {
+  [...measureGroup.children].forEach((c) => measureGroup.remove(c));
+  measurePts = [];
+  $('#measureInfo').classList.remove('show');
+}
+function addMeasurePoint(p) {
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  dot.position.copy(p); measureGroup.add(dot);
+  measurePts.push(p.clone());
+  if (measurePts.length === 2) {
+    const g = new THREE.BufferGeometry().setFromPoints(measurePts);
+    measureGroup.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xc2502e })));
+    const dist = measurePts[0].distanceTo(measurePts[1]) / SCALE;
+    $('#measureInfo').textContent = `Расстояние: ${dist.toFixed(2)} м`;
+    $('#measureInfo').classList.add('show');
+    measurePts = []; // next click starts a fresh segment (keeps the drawn one)
+  }
+}
+function handleMeasureClick(ev) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
+  const cy = (ev.touches ? ev.touches[0].clientY : ev.clientY) - rect.top;
+  pointer.x = (cx / rect.width) * 2 - 1;
+  pointer.y = -(cy / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, activeCam);
+
+  if (MODE === 'doll' && modelMesh) {
+    const hit = raycaster.intersectObject(modelMesh, true)[0];
+    if (hit) addMeasurePoint(hit.point);
+  } else if (MODE === 'pano') {
+    // Single panorama has no real depth: project onto a 2.5m-radius "wall"
+    // sphere as an approximation (good enough for rough room sizing).
+    const hit = raycaster.intersectObject(panoSphere)[0];
+    if (hit) addMeasurePoint(hit.point.clone().multiplyScalar(2.5 / 500));
+  }
+}
+
+// ============================================================================
+// 7. Floorplan (image or auto-generated from room.plan coords)
+// ============================================================================
+const planCanvas = $('#plan');
+const pctx = planCanvas.getContext('2d');
+let planImg = null;
+if (META.floorplan?.image) {
+  planImg = new Image();
+  planImg.onload = drawPlan;
+  planImg.src = BASE + META.floorplan.image;
+}
+function drawPlan() {
+  const W = planCanvas.width, H = planCanvas.height;
+  pctx.clearRect(0, 0, W, H);
+  if (planImg && planImg.complete) {
+    pctx.drawImage(planImg, 0, 0, W, H);
+  } else {
+    // Auto schematic: soft background + connections between room dots.
+    pctx.fillStyle = 'rgba(255,255,255,0.05)'; pctx.fillRect(0, 0, W, H);
+    pctx.strokeStyle = 'rgba(255,255,255,0.25)'; pctx.lineWidth = 2;
+    ROOMS.forEach((r) => (r.links || []).forEach((l) => {
+      const a = r.plan, b = ROOM_BY_ID[l.to]?.plan;
+      if (a && b) { pctx.beginPath(); pctx.moveTo(a.x * W, a.y * H); pctx.lineTo(b.x * W, b.y * H); pctx.stroke(); }
+    }));
+  }
+  // Room dots
+  ROOMS.forEach((r) => {
+    if (!r.plan) return;
+    const x = r.plan.x * W, y = r.plan.y * H;
+    const isCur = r.id === currentRoomId;
+    pctx.beginPath(); pctx.arc(x, y, isCur ? 11 : 8, 0, Math.PI * 2);
+    pctx.fillStyle = isCur ? '#c2502e' : 'rgba(28,24,19,.85)';
+    pctx.fill(); pctx.lineWidth = 2; pctx.strokeStyle = '#fff'; pctx.stroke();
+    pctx.fillStyle = '#fff'; pctx.font = '600 12px sans-serif'; pctx.textAlign = 'center';
+    pctx.fillText(r.name, x, y - 14);
+  });
+}
+planCanvas.addEventListener('click', (e) => {
+  const rect = planCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+  let best = null, bestD = 0.06;            // click tolerance (normalized)
+  ROOMS.forEach((r) => {
+    if (!r.plan) return;
+    const d = Math.hypot(r.plan.x - x, r.plan.y - y);
+    if (d < bestD) { bestD = d; best = r; }
+  });
+  if (best) goToRoom(best.id);
+});
+
+// ============================================================================
+// 8. Room navigation
+// ============================================================================
+let currentRoomId = null;
+function goToRoom(id, { fly = true } = {}) {
+  const room = ROOM_BY_ID[id];
+  if (!room) return;
+  currentRoomId = id;
+  $('#curRoom').textContent = room.name;
+  $('#roomSelect').value = id;
+  loadPanorama(room);
+  buildHotspots(room);
+  if (room.initialYaw != null) {
+    panoView.lon = panoView.targetLon = room.initialYaw;
+    panoView.lat = panoView.targetLat = 0;
+  }
+  drawPlan();
+  if (MODE !== 'pano' && fly) setMode('pano');     // selecting a room returns to panorama
+}
+
+// Room dropdown
+const sel = $('#roomSelect');
+ROOMS.forEach((r) => { const o = document.createElement('option'); o.value = r.id; o.textContent = r.name; sel.appendChild(o); });
+sel.addEventListener('change', (e) => goToRoom(e.target.value));
+
+// ============================================================================
+// 9. Modes
+// ============================================================================
+let MODE = 'pano';
+function setMode(mode) {
+  MODE = mode;
+  document.querySelectorAll('#modes button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  const isPano = mode === 'pano', isDoll = mode === 'doll', isPlan = mode === 'plan';
+  panoSphere.visible = isPano || isPlan; // keep pano behind plan too
+  hotspotGroup.visible = isPano;
+  dollGroup.visible = isDoll;
+  dollControls.enabled = isDoll;
+  activeCam = isDoll ? dollCam : panoCam;
+  $('#planWrap').classList.toggle('show', isPlan);
+  $('#tools').style.display = isPlan ? 'none' : 'flex';
+  if (isPlan) drawPlan();
+}
+document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+// Dollhouse: click a room marker to enter it
+renderer.domElement.addEventListener('click', (e) => {
+  if (MEASURE) { handleMeasureClick(e); return; }
+  if (MODE !== 'doll') return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, dollCam);
+  const hit = raycaster.intersectObjects(roomMarkers.children, true)[0];
+  if (hit && hit.object.userData.roomId) goToRoom(hit.object.userData.roomId);
+});
+
+// ============================================================================
+// 10. Tools wiring
+// ============================================================================
+$('#measureBtn').addEventListener('click', () => {
+  MEASURE = !MEASURE;
+  $('#measureBtn').classList.toggle('active', MEASURE);
+  if (!MEASURE) clearMeasure();
+  showHint(MEASURE ? 'Кликайте по точкам — покажу расстояние' : '');
+});
+$('#resetBtn').addEventListener('click', () => {
+  if (MODE === 'pano') { panoCam.fov = 75; panoCam.updateProjectionMatrix(); const r = ROOM_BY_ID[currentRoomId]; panoView.targetLon = r ? (r.initialYaw || 0) : 0; panoView.targetLat = 0; }
+  else if (MODE === 'doll') dollControls.reset();
+});
+
+let hintTimer;
+function showHint(msg) {
+  const h = $('#hint');
+  if (!msg) { h.classList.remove('show'); return; }
+  h.textContent = msg; h.classList.add('show');
+  clearTimeout(hintTimer); hintTimer = setTimeout(() => h.classList.remove('show'), 3500);
+}
+
+// Pre-load any saved measurements from metadata (drawn in dollhouse space)
+(META.measurements || []).forEach((m) => {
+  if (m.a && m.b) {
+    const a = new THREE.Vector3(m.a.x * SCALE, m.a.y * SCALE, m.a.z * SCALE);
+    const b = new THREE.Vector3(m.b.x * SCALE, m.b.y * SCALE, m.b.z * SCALE);
+    const g = new THREE.BufferGeometry().setFromPoints([a, b]);
+    dollGroup.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x1f5c4d })));
+  }
+});
+
+// ============================================================================
+// 11. Resize + render loop
+// ============================================================================
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+  [panoCam, dollCam].forEach((c) => { c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix(); });
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (MODE === 'pano') {
+    // smooth easing toward the target lon/lat
+    panoView.lon += (panoView.targetLon - panoView.lon) * 0.12;
+    panoView.lat += (panoView.targetLat - panoView.lat) * 0.12;
+    aimPano();
+  }
+  if (MODE === 'doll') dollControls.update();
+  renderer.render(scene, activeCam);
+  labelRenderer.render(scene, activeCam);
+}
+
+// ============================================================================
+// 12. Boot
+// ============================================================================
+try {
+  goToRoom(META.startRoom || ROOMS[0]?.id, { fly: false });
+  setMode('pano');
+  animate();
+  loadingEl.classList.add('hide');
+  setTimeout(() => showHint('Перетащите для осмотра • стрелки — переход в комнату'), 600);
+} catch (e) {
+  fail(e.message || 'Ошибка инициализации');
+}
+</script>
+</body>
+</html>

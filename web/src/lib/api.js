@@ -122,6 +122,9 @@ export const api = {
   upsertTour: (id, b) => req('PUT', `/tours/${id}`, { body: b }),
   pannellum: (id) => req('GET', `/tours/${id}/pannellum`),
   shareRoom: (id, room_id) => req('GET', `/tours/${id}/share`, { params: { room_id } }),
+  get3dTour: (id) => req('GET', `/tours/${id}/3d`),
+  upload3dTour: (id, fd) => req('POST', `/tours/${id}/3d`, { body: fd, isForm: true }),
+  delete3dTour: (id) => req('DELETE', `/tours/${id}/3d`),
 
   askSpatial: (b) => req('POST', '/spatial-qa', { body: b }),
   spatialOne: (id) => req('GET', `/spatial-qa/${id}`),
