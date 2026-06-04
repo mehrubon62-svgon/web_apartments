@@ -124,6 +124,7 @@ def convert(zf: zipfile.ZipFile, dest: Path) -> dict:
     # build room nodes
     id_to_room: dict[str, dict] = {}
     positions: dict[str, tuple] = {}
+    rotations: dict[str, dict] = {}
     rooms: list[dict] = []
     order: list[str] = []
 
@@ -154,6 +155,7 @@ def convert(zf: zipfile.ZipFile, dest: Path) -> dict:
 
         pos = pano.get("position") or loc.get("position") or {"x": 0, "y": 0, "z": 0}
         positions[loc_id] = (pos.get("x", 0.0), pos.get("y", 0.0), pos.get("z", 0.0))
+        rotations[loc_id] = pano.get("rotation") or {}
         label = (loc.get("room") or {}).get("id")
         name = room_label_by_id.get(label) or f"Точка {pano.get('label') or len(rooms) + 1}"
 
@@ -188,10 +190,25 @@ def convert(zf: zipfile.ZipFile, dest: Path) -> dict:
         Matches the .dam mesh transform so dollhouse markers sit on the mesh."""
         return (p[fa], p[up_axis], -p[fb])
 
+    # Each panorama is captured with its OWN heading (a twist about the up-axis).
+    # We bake that heading into the metadata so the viewer can rotate every
+    # sphere into a single shared world frame — without it, moving to a sweep
+    # whose capture heading differs makes the view appear to spin / face the
+    # wrong way. heading is expressed in the viewer's yaw convention.
+    def sweep_heading(rid):
+        rot = rotations.get(rid) or {}
+        x, y, z, w = rot.get("x", 0.0), rot.get("y", 0.0), rot.get("z", 0.0), rot.get("w", 1.0)
+        comp = (x, y, z)[up_axis]              # up-axis component of the quaternion
+        twist = math.degrees(2.0 * math.atan2(comp, w))
+        # viewer maps the second floor axis with a sign flip (z=-floor_b), which
+        # mirrors the sense of rotation, so negate to match viewer yaw.
+        return round(-twist, 2)
+
     # camera positions in viewer space (used by the dollhouse / overview mode)
     for r in rooms:
         vx, vy, vz = viewer_xyz(positions[r["id"]])
         r["camera"] = {"x": round(vx, 3), "y": round(vy, 3), "z": round(vz, 3)}
+        r["heading"] = sweep_heading(r["id"])
 
     # links from neighbour graph. Heading convention matches the viewer camera:
     # a hotspot at yaw sits at viewer direction (cos yaw, *, sin yaw). The viewer
