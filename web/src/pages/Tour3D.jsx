@@ -197,21 +197,42 @@ export function Tour3DPage() {
         }, undefined, () => { meshReady = false; maybeIntro(); });
       }
 
-      // ---- click-to-walk reticle (lies flat on whatever it points at) -----
+      // ---- click-to-walk reticle — hugs the surface under the cursor ------
+      // It sits ON whatever you point at (floor, wall, sofa, counter) and tilts
+      // to match that surface, like Matterport's probe. Stability comes from
+      // using SMOOTH interpolated vertex normals (continuous across the scan,
+      // unlike jittery per-triangle normals) plus heavy easing in the loop.
       const reticle = new THREE.Group(); reticle.visible = false; reticle.renderOrder = 6;
       const reticleRing = new THREE.Mesh(
-        new THREE.RingGeometry(0.17, 0.27, 40),
+        new THREE.RingGeometry(0.18, 0.30, 48),
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthTest: false })
       );
       const reticleDot = new THREE.Mesh(
-        new THREE.CircleGeometry(0.05, 24),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthTest: false })
+        new THREE.CircleGeometry(0.055, 24),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthTest: false })
       );
       reticle.add(reticleRing); reticle.add(reticleDot); scene.add(reticle);
-      // target pose the reticle eases toward (kills scan-normal jitter)
       const retTargetPos = new THREE.Vector3();
       const retTargetQuat = new THREE.Quaternion();
+      const _zAxis = new THREE.Vector3(0, 0, 1);
       let retActive = false;
+
+      // Floor height per room, found once by casting straight down from the
+      // sweep onto the mesh (≈ camera height below the sweep). Cached.
+      const floorYCache = {};
+      function floorYForRoom(room) {
+        if (!room) return 0;
+        if (room.id in floorYCache) return floorYCache[room.id];
+        let y = camVec(room).y - 1.45 * SCALE;     // sensible default (tripod height)
+        if (houseMesh) {
+          const c = camVec(room);
+          ray.set(new THREE.Vector3(c.x, c.y, c.z), new THREE.Vector3(0, -1, 0));
+          const hits = ray.intersectObject(houseMesh, true);
+          if (hits.length) y = hits[hits.length - 1].point.y;   // lowest = the actual floor
+        }
+        floorYCache[room.id] = y;
+        return y;
+      }
 
       // ---- measuring ------------------------------------------------------
       const measureGroup = new THREE.Group(); scene.add(measureGroup);
@@ -231,47 +252,48 @@ export function Tour3DPage() {
 
       function setPtr(e) { const r = el.getBoundingClientRect(); ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1; ptr.y = -((e.clientY - r.top) / r.height) * 2 + 1; }
 
-      // Smooth, stable surface normal at a hit: interpolate the mesh's baked
-      // vertex normals across the triangle (barycentric), then SNAP to the
-      // nearest axis so floors read perfectly flat and walls perfectly vertical.
-      // Raw per-triangle normals on a noisy scan jitter — this removes that.
+      // Smooth surface normal at a hit: interpolate the mesh's baked vertex
+      // normals across the triangle (barycentric). This is continuous over the
+      // surface, so the probe glides instead of snapping between facets.
       const _vA = new THREE.Vector3(), _vB = new THREE.Vector3(), _vC = new THREE.Vector3();
       const _nA = new THREE.Vector3(), _nB = new THREE.Vector3(), _nC = new THREE.Vector3();
-      const _bc = new THREE.Vector3(), _localPt = new THREE.Vector3();
+      const _bc = new THREE.Vector3(), _lp = new THREE.Vector3();
       function smoothNormal(h) {
-        let n = new THREE.Vector3(0, 1, 0);
         const obj = h.object, g = obj && obj.geometry;
+        let n = h.face ? h.face.normal.clone() : new THREE.Vector3(0, 1, 0);
         if (h.face && g && g.attributes.normal && g.attributes.position) {
           const pos = g.attributes.position, nor = g.attributes.normal;
           _vA.fromBufferAttribute(pos, h.face.a); _vB.fromBufferAttribute(pos, h.face.b); _vC.fromBufferAttribute(pos, h.face.c);
           _nA.fromBufferAttribute(nor, h.face.a); _nB.fromBufferAttribute(nor, h.face.b); _nC.fromBufferAttribute(nor, h.face.c);
-          // hit point in the mesh's local space
-          _localPt.copy(h.point); obj.worldToLocal(_localPt);
-          const bc = THREE.Triangle.getBarycoord(_localPt, _vA, _vB, _vC, _bc);
-          if (bc) {
-            n.set(0, 0, 0).addScaledVector(_nA, _bc.x).addScaledVector(_nB, _bc.y).addScaledVector(_nC, _bc.z);
-          }
-          if (!bc || n.lengthSq() < 1e-8) n.copy(h.face.normal);
-          n.transformDirection(obj.matrixWorld).normalize();
-        } else if (h.face && obj) {
-          n.copy(h.face.normal).transformDirection(obj.matrixWorld).normalize();
+          _lp.copy(h.point); obj.worldToLocal(_lp);
+          const bc = THREE.Triangle.getBarycoord(_lp, _vA, _vB, _vC, _bc);
+          if (bc) { const m = new THREE.Vector3().addScaledVector(_nA, _bc.x).addScaledVector(_nB, _bc.y).addScaledVector(_nC, _bc.z); if (m.lengthSq() > 1e-8) n.copy(m); }
         }
-        // snap to the dominant axis (floor/ceiling -> Y, walls -> X or Z)
-        const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
-        if (ay >= ax && ay >= az) n.set(0, Math.sign(n.y) || 1, 0);
-        else if (ax >= az) n.set(Math.sign(n.x) || 1, 0, 0);
-        else n.set(0, 0, Math.sign(n.z) || 1);
-        return n;
+        if (obj) n.transformDirection(obj.matrixWorld);
+        return n.normalize();
       }
 
-      // Raycast the real mesh first (so the cursor climbs onto a couch etc.);
-      // fall back to a horizontal floor plane at sweep height.
-      const _zAxis = new THREE.Vector3(0, 0, 1);
-      function surfaceHit() {
-        if (houseMesh) { const h = ray.intersectObject(houseMesh, true)[0]; if (h) return h; }
+      // Probe the surface under the pointer. Returns {point, normal}. If nothing
+      // is hit (or no mesh), falls back to the room's floor plane (flat).
+      function probe() {
+        if (houseMesh) {
+          const h = ray.intersectObject(houseMesh, true)[0];
+          if (h) return { point: h.point.clone(), normal: smoothNormal(h) };
+        }
+        const fy = MODE === 'pano' ? floorYForRoom(ROOM_BY_ID[currentId]) : floorY;
+        floorPlane.constant = -fy;
         const hit = new THREE.Vector3();
-        floorPlane.constant = -(MODE === 'pano' ? panoCam.position.y - 1.45 * SCALE : floorY);
-        return ray.ray.intersectPlane(floorPlane, hit) ? { point: hit, face: null } : null;
+        if (!ray.ray.intersectPlane(floorPlane, hit)) return null;
+        if (MODE === 'pano' && hit.distanceTo(panoCam.position) > 60) return null;
+        return { point: hit, normal: new THREE.Vector3(0, 1, 0) };
+      }
+
+      // For walking we only care about a floor position: take the probe point
+      // and drop it to the room floor so we pick the right destination sweep.
+      function floorTarget() {
+        const p = probe(); if (!p) return null;
+        const fy = MODE === 'pano' ? floorYForRoom(ROOM_BY_ID[currentId]) : floorY;
+        return new THREE.Vector3(p.point.x, fy, p.point.z);
       }
 
       // Sweep nearest to a world point, measured on the FLOOR (ignore height),
@@ -288,16 +310,11 @@ export function Tour3DPage() {
       const hover = (e) => {
         if (MODE !== 'pano' || MEASURE || dragging || anim) { retActive = false; reticle.visible = false; return; }
         setPtr(e); ray.setFromCamera(ptr, panoCam);
-        const h = surfaceHit();
-        if (h) {
-          const n = smoothNormal(h);
-          retTargetPos.copy(h.point).addScaledVector(n, 0.03);
-          retTargetQuat.setFromUnitVectors(_zAxis, n);   // ring's local +Z -> surface normal
-          if (!retActive) {            // first appearance: snap, don't slide from afar
-            reticle.position.copy(retTargetPos);
-            reticle.quaternion.copy(retTargetQuat);
-            reticle.visible = true;
-          }
+        const p = probe();
+        if (p) {
+          retTargetPos.copy(p.point).addScaledVector(p.normal, 0.02);   // float just above the surface
+          retTargetQuat.setFromUnitVectors(_zAxis, p.normal);            // ring's +Z -> surface normal
+          if (!retActive) { reticle.position.copy(retTargetPos); reticle.quaternion.copy(retTargetQuat); reticle.visible = true; }
           retActive = true;
         } else { retActive = false; reticle.visible = false; }
       };
@@ -306,8 +323,15 @@ export function Tour3DPage() {
       el.addEventListener('click', (e) => {
         if (moved || anim) return;
         setPtr(e); ray.setFromCamera(ptr, activeCam);
-        if (MEASURE) { const h = surfaceHit(); if (h) addPoint(h.point.clone()); return; }
-        if (MODE === 'pano') { const h = surfaceHit(); if (h) { const t = targetSweep(h.point); if (t) walkTo(t); } return; }
+        if (MEASURE) {
+          // measuring still uses the real surface (so you can measure objects)
+          let p = null;
+          if (houseMesh) { const h = ray.intersectObject(houseMesh, true)[0]; if (h) p = h.point.clone(); }
+          if (!p) { const fp = floorTarget(); if (fp) p = fp; }
+          if (p) addPoint(p);
+          return;
+        }
+        if (MODE === 'pano') { const fp = floorTarget(); if (fp) { const t = targetSweep(fp); if (t) walkTo(t); } return; }
         // dollhouse / plan: click the house -> fly into the nearest room
         if (houseMesh) { const h = ray.intersectObject(houseMesh, true)[0]; if (h) { const t = targetSweep(h.point); if (t) flyInto(t); } }
       });
@@ -465,12 +489,12 @@ export function Tour3DPage() {
           }
           pv.lon += (pv.tLon - pv.lon) * 0.14; pv.lat += (pv.tLat - pv.lat) * 0.14;
 
-          // reticle eases to its target pose so it glides flat onto surfaces
+          // reticle eases to the probed surface (position + tilt to the normal)
           if (retActive && !anim) {
             reticle.visible = true;
-            reticle.position.lerp(retTargetPos, 0.35);
-            reticle.quaternion.slerp(retTargetQuat, 0.35);
-            const s = 1 + Math.sin(performance.now() / 320) * 0.08; reticle.scale.setScalar(s);
+            reticle.position.lerp(retTargetPos, 0.4);
+            reticle.quaternion.slerp(retTargetQuat, 0.4);
+            const s = 1 + Math.sin(performance.now() / 320) * 0.08; reticleRing.scale.setScalar(s);
           } else if (!retActive) reticle.visible = false;
 
           if (anim && anim.kind === 'walk') {
