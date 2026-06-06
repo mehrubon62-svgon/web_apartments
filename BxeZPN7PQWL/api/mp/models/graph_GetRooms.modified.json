@@ -1,0 +1,36 @@
+{
+  "data" : {
+    "model" : {
+      "id" : "BxeZPN7PQWL",
+      "rooms" : [ {
+        "id" : "613htqkzf66zz7hf7n8kzszed",
+        "meshId" : 2,
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "dimensions" : {
+          "height" : null,
+          "width" : 39.64546598308563,
+          "depth" : 13.327915012397765,
+          "areaFloor" : 464.0747675186157
+        },
+        "tags" : [ "kitchen", "living", "bathroom" ]
+      }, {
+        "id" : "cdz3fkt38kae7tapstpt0eaeb",
+        "meshId" : 3,
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "dimensions" : {
+          "height" : null,
+          "width" : 9.415853199682235,
+          "depth" : 13.028324223709106,
+          "areaFloor" : 125.37899277124404
+        },
+        "tags" : [ "bedroom" ]
+      } ]
+    }
+  }
+}

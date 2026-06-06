@@ -66,3 +66,20 @@ class TourOut(BaseModel):
 
 class ShareResponse(BaseModel):
     url: str
+
+
+class Tour3DRoomNames(BaseModel):
+    """Owner-supplied custom names for 3D-tour points: {room_id: name}."""
+    names: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("names")
+    @classmethod
+    def _validate(cls, names):
+        if len(names) > 500:
+            raise ValueError("Too many rooms")
+        cleaned = {}
+        for rid, nm in names.items():
+            nm = (nm or "").strip()
+            if nm:
+                cleaned[str(rid)] = nm[:80]   # cap length
+        return cleaned

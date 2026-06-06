@@ -1,0 +1,394 @@
+{
+  "data" : {
+    "model" : {
+      "id" : "raFHfCRyNrC",
+      "mattertags" : [ ],
+      "orderedLists" : [ ],
+      "labels" : [ {
+        "id" : "bD381t7OUqV",
+        "position" : {
+          "x" : 1.0369345597009794,
+          "y" : 0.5561578206538081,
+          "z" : 1.5050926208496094
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb",
+          "meshId" : 1
+        },
+        "room" : {
+          "id" : "2qdmc5i9byxi79ry1pxdkqzea",
+          "meshId" : 8
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Room 2",
+        "enabled" : true,
+        "created" : "2021-10-30T14:15:49Z",
+        "modified" : "2021-10-30T14:15:49Z"
+      }, {
+        "id" : "f9e3ABKImHs",
+        "position" : {
+          "x" : 0.5661819512448725,
+          "y" : 2.8556010228273263,
+          "z" : -1.213183045387268
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "room" : {
+          "id" : "cdz3fkt38kae7tapstpt0eaeb",
+          "meshId" : 3
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Room 1",
+        "enabled" : true,
+        "created" : "2021-10-30T14:16:43Z",
+        "modified" : "2021-10-30T14:16:43Z"
+      }, {
+        "id" : "h1poJhUHzrb",
+        "position" : {
+          "x" : 5.228439257662046,
+          "y" : 2.4934839504842436,
+          "z" : 1.5050926208496094
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb",
+          "meshId" : 1
+        },
+        "room" : {
+          "id" : "3m54yff1z7crxaywd8if9rb0d",
+          "meshId" : 7
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Room 4",
+        "enabled" : true,
+        "created" : "2021-10-30T14:16:14Z",
+        "modified" : "2021-10-30T14:16:14Z"
+      }, {
+        "id" : "yLRzytH4R63",
+        "position" : {
+          "x" : 5.346127582446949,
+          "y" : 0.1668820369533474,
+          "z" : -1.213183045387268
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "room" : {
+          "id" : "613htqkzf66zz7hf7n8kzszed",
+          "meshId" : 2
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Kitchen",
+        "enabled" : true,
+        "created" : "2021-10-30T14:17:18Z",
+        "modified" : "2021-10-30T14:17:18Z"
+      }, {
+        "id" : "NPuovXIQJVP",
+        "position" : {
+          "x" : 2.883731076103893,
+          "y" : 2.873706945512831,
+          "z" : -1.213183045387268
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "room" : {
+          "id" : "613htqkzf66zz7hf7n8kzszed",
+          "meshId" : 2
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Living Room",
+        "enabled" : true,
+        "created" : "2021-10-30T14:17:09Z",
+        "modified" : "2021-10-30T14:17:09Z"
+      }, {
+        "id" : "V9T8fEmmdth",
+        "position" : {
+          "x" : 1.0550401370447329,
+          "y" : 3.235824017855911,
+          "z" : 1.5050926208496094
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb",
+          "meshId" : 1
+        },
+        "room" : {
+          "id" : "h26t7ky77ew74yb0pg8qqf5rd",
+          "meshId" : 6
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Room 3",
+        "enabled" : true,
+        "created" : "2021-10-30T14:15:57Z",
+        "modified" : "2021-10-30T14:15:57Z"
+      }, {
+        "id" : "ZrloAdKC0ap",
+        "position" : {
+          "x" : 5.246545525689303,
+          "y" : 3.7337349923276495,
+          "z" : -1.213183045387268
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "room" : {
+          "id" : "613htqkzf66zz7hf7n8kzszed",
+          "meshId" : 2
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Dining Area",
+        "enabled" : true,
+        "created" : "2021-10-30T14:17:29Z",
+        "modified" : "2021-10-30T14:17:29Z"
+      }, {
+        "id" : "8LI8JotVWD1",
+        "position" : {
+          "x" : 3.526489432059665,
+          "y" : -0.041335555917324796,
+          "z" : -1.213183045387268
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "room" : {
+          "id" : "tt6gm2a0463x9wmnx7rn6gugc",
+          "meshId" : 5
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Shower 1",
+        "enabled" : true,
+        "created" : "2021-10-30T14:17:00Z",
+        "modified" : "2021-10-30T14:17:00Z"
+      }, {
+        "id" : "hklfaQ58YTz",
+        "position" : {
+          "x" : 0.9101934462442003,
+          "y" : -0.16807666937410454,
+          "z" : -1.213183045387268
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd",
+          "meshId" : 0
+        },
+        "room" : {
+          "id" : "xy2x8mpaaqknp7q2c3nnbw1ma",
+          "meshId" : 4
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Hallway",
+        "enabled" : true,
+        "created" : "2021-10-30T14:16:51Z",
+        "modified" : "2021-10-30T14:16:51Z"
+      }, {
+        "id" : "B3JWKUbLa81",
+        "position" : {
+          "x" : 3.327324627860869,
+          "y" : 3.7156292423130193,
+          "z" : 1.5050926208496094
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb",
+          "meshId" : 1
+        },
+        "room" : {
+          "id" : "19ab05tns5h6y4qm42esqqpea",
+          "meshId" : 10
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Shower 2",
+        "enabled" : true,
+        "created" : "2021-10-30T14:16:06Z",
+        "modified" : "2021-10-30T14:16:06Z"
+      }, {
+        "id" : "4xoDAsYlGgm",
+        "position" : {
+          "x" : 5.047380721490506,
+          "y" : 0.21214667099623088,
+          "z" : 1.5050926208496094
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb",
+          "meshId" : 1
+        },
+        "room" : {
+          "id" : "a5f9age4zzxewres6iqux2emc",
+          "meshId" : 9
+        },
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd"
+        },
+        "label" : "Room 5",
+        "enabled" : true,
+        "created" : "2021-10-30T14:16:23Z",
+        "modified" : "2021-10-30T14:16:23Z"
+      } ],
+      "measurementPaths" : [ ],
+      "activeHighlightReel" : {
+        "id" : "6fd2p32w2pbxir25nr0s89taa",
+        "label" : "active_reel",
+        "mode" : "reel",
+        "reel" : [ {
+          "overrides" : null,
+          "asset" : {
+            "id" : "2SpKwhVtRGr"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "WaHoHJdzV93"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "3FiMvTYDPyo"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "JGgKhdHbxQJ"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "FRh2STq8qY3"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "LpYkkQBccsX"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "xnDL3AgcEer"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "E8EBLY82DXx"
+          },
+          "title" : null,
+          "description" : null
+        }, {
+          "overrides" : null,
+          "asset" : {
+            "id" : "Dd6bKRk1xHN"
+          },
+          "title" : null,
+          "description" : null
+        } ]
+      },
+      "image" : {
+        "id" : "wD7q8YjwwX4",
+        "label" : "10.30.2021_15.11.54",
+        "classification" : null,
+        "category" : "snapshot",
+        "height" : 1707,
+        "width" : 3034,
+        "created" : "2021-10-30T14:11:55Z",
+        "modified" : "2021-10-30T14:11:55Z",
+        "status" : "available",
+        "filename" : "10302021_151154.jpg",
+        "format" : "image",
+        "url" : "https://cdn-2.matterport.com/apifs/models/raFHfCRyNrC/images/wD7q8YjwwX4/10.30.2021_15.11.54.jpg?t=2-7908c595b38b92773ed48bd9098001b0ab362c8a-1780680644-1",
+        "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+        "type" : "photo2D",
+        "origin" : "user",
+        "validUntil":"2099-01-01T17:30:44Z",
+        "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/raFHfCRyNrC/images/wD7q8YjwwX4/10.30.2021_15.11.54.jpg?t=2-7908c595b38b92773ed48bd9098001b0ab362c8a-1780680644-1&width=200&height=140&fit=crop&disable=upscale",
+        "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/raFHfCRyNrC/images/wD7q8YjwwX4/10.30.2021_15.11.54.jpg?t=2-7908c595b38b92773ed48bd9098001b0ab362c8a-1780680644-1&width=1920&height=1080&fit=crop&disable=upscale",
+        "snapshotLocation" : {
+          "viewMode" : "panorama",
+          "position" : {
+            "x" : 2.6488192081451416,
+            "y" : 2.131190061569214,
+            "z" : -1.221250295639038
+          },
+          "rotation" : {
+            "x" : -0.7041159133555142,
+            "y" : 0.08760430034276052,
+            "z" : -0.08700131839237053,
+            "w" : 0.6992689308845748
+          },
+          "zoom" : 1.0,
+          "floorVisibility" : [ {
+            "id" : "tsmq1wak12rhgn0mawksxcwcd",
+            "meshId" : 0,
+            "sequence" : 0
+          } ],
+          "anchor" : {
+            "id" : "m8x0eq9706huaem38k714f5zb",
+            "pano" : {
+              "id" : "m8x0eq9706huaem38k714f5zb",
+              "placement" : "auto"
+            }
+          }
+        }
+      }
+    },
+    "view" : {
+      "layers" : [ {
+        "layer" : {
+          "id" : "ww7s9kp38b65hme6rinz4egsd",
+          "created" : "2025-11-07T07:03:29Z",
+          "modified" : "2026-05-25T23:45:03Z",
+          "type" : "matterport.user.data",
+          "name" : "matterport.user.data",
+          "label" : ""
+        },
+        "position" : 0,
+        "visible" : true
+      }, {
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created" : "2021-10-29T17:49:40Z",
+          "modified" : "2025-11-07T07:03:29Z",
+          "type" : "matterport.base",
+          "name" : null,
+          "label" : ""
+        },
+        "position" : 1,
+        "visible" : true
+      } ]
+    }
+  }
+}

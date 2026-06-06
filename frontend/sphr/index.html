@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>3D Tour</title>
+  <link rel="stylesheet" href="./styles/main.474be7c8fb5c55da6146.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0c0d12; overflow: hidden; }
+    canvas.webgl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    .hidden { display: none !important; }
+    #loading-screen { position: fixed; inset: 0; background: #0c0d12; display: grid; place-content: center;
+      color: #fff; font-family: system-ui, sans-serif; z-index: 50; transition: opacity .6s ease; }
+    #loading-screen.loading-hidden { opacity: 0; pointer-events: none; }
+    .ldr { display: grid; justify-items: center; gap: 14px; }
+    .ldr-spin { width: 40px; height: 40px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18); border-top-color: #c2502e; animation: ldrspin 1s linear infinite; }
+    @keyframes ldrspin { to { transform: rotate(360deg); } }
+    #loading-text-notification { opacity: .85; font-size: 14px; }
+    /* viewer control buttons (bottom-right) */
+    .sphr-ctrls { position: fixed; right: 16px; bottom: 16px; z-index: 30; display: flex; gap: 8px; }
+    .sphr-ctrls button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.2);
+      background: rgba(20,23,28,.7); color: #fff; cursor: pointer; display: grid; place-content: center; backdrop-filter: blur(8px); }
+    .sphr-ctrls button:hover { background: #c2502e; border-color: #c2502e; }
+    .sphr-ctrls svg { width: 20px; height: 20px; }
+  </style>
+</head>
+<body>
+  <canvas class="webgl"></canvas>
+
+  <!-- loading screen -->
+  <div id="loading-screen">
+    <div class="ldr">
+      <div class="ldr-spin"></div>
+      <div id="loading-text-notification"><span id="loading-text-notification-percent">0%</span></div>
+    </div>
+  </div>
+
+  <!-- controls sphr binds to -->
+  <div class="sphr-ctrls">
+    <button id="view-mode-button" title="View mode">
+      <svg id="view-mode-fpv-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18"/></svg>
+      <svg id="view-mode-orbit-icon" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="1"/></svg>
+    </button>
+    <button id="full-screen-button" title="Fullscreen">
+      <svg id="full-screen-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      <svg id="full-screen-off" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>
+    </button>
+  </div>
+
+  <!-- hidden stubs some handlers reference -->
+  <div id="tour-ui-buttons" class="hidden"></div>
+  <div id="tour-ui-navpoint" class="hidden"></div>
+  <input id="autoplay" type="checkbox" class="hidden" />
+  <input id="words" type="checkbox" class="hidden" />
+  <button id="next-button" class="hidden"></button>
+  <button id="prev-button" class="hidden"></button>
+  <div id="debug-container" class="hidden"></div>
+  <div id="node-loading-screen" class="hidden"></div>
+
+  <!-- space data injected here before the bundle loads -->
+  <script type="application/json" id="space_data"></script>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var prop = params.get('property');
+      var base = '/media-files/tours3d/' + encodeURIComponent(prop) + '/';
+      window.__SPHR_BASE__ = base;
+
+      var pct = document.getElementById('loading-text-notification-percent');
+
+      fetch(base + 'sphr_space.json', { cache: 'no-cache' })
+        .then(function (r) { if (!r.ok) throw new Error('space ' + r.status); return r.json(); })
+        .then(function (space) {
+          // resolve relative mesh url against the media base
+          if (space.mesh && space.mesh.indexOf('http') !== 0 && space.mesh.indexOf('/') !== 0) {
+            space.mesh = base + space.mesh;
+          }
+          document.getElementById('space_data').textContent = JSON.stringify(space);
+          // now load the sphr engine bundle
+          var s = document.createElement('script');
+          s.src = './bundle.d42c4c21904b0ea8740f.js';
+          s.defer = true;
+          document.body.appendChild(s);
+        })
+        .catch(function (e) {
+          if (pct) pct.textContent = '';
+          var ls = document.getElementById('loading-screen');
+          ls.innerHTML = '<div style="color:#fff;font-family:system-ui;text-align:center"><p>3D tour unavailable</p><p style="opacity:.6;font-size:13px">' + (e && e.message || '') + '</p></div>';
+        });
+    })();
+  </script>
+</body>
+</html>

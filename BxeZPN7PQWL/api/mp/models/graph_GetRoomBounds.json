@@ -1,0 +1,56 @@
+{
+  "data" : {
+    "model" : {
+      "floors" : [ {
+        "id" : "tsmq1wak12rhgn0mawksxcwcd",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "edges" : [ ]
+      } ],
+      "rooms" : [ {
+        "id" : "613htqkzf66zz7hf7n8kzszed",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "classifications" : [ ],
+        "boundary" : {
+          "edges" : [ ]
+        },
+        "holes" : [ ],
+        "dimensionEstimates" : null,
+        "ceiling" : {
+          "planes" : null,
+          "maxHeight" : null,
+          "minHeight" : null
+        },
+        "label" : null,
+        "keywords" : [ ]
+      }, {
+        "id" : "cdz3fkt38kae7tapstpt0eaeb",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "classifications" : [ ],
+        "boundary" : {
+          "edges" : [ ]
+        },
+        "holes" : [ ],
+        "dimensionEstimates" : null,
+        "ceiling" : {
+          "planes" : null,
+          "maxHeight" : null,
+          "minHeight" : null
+        },
+        "label" : null,
+        "keywords" : [ ]
+      } ]
+    }
+  }
+}

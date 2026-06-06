@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { useApp } from './lib/store.jsx';
 import { Layout } from './components/Layout.jsx';
 import { Spinner } from './components/Common.jsx';
@@ -12,7 +13,7 @@ import { TourPage } from './pages/Tour.jsx';
 import { AgentPage } from './pages/Agent.jsx';
 import { AboutPage } from './pages/About.jsx';
 import { ComparePage } from './pages/Compare.jsx';
-import { Tour3DPage } from './pages/Tour3D.jsx';
+const Tour3DPage = lazy(() => import('./pages/Tour3D.jsx').then((m) => ({ default: m.Tour3DPage })));
 import { MessagesPage } from './pages/Messages.jsx';
 import { AuthPage } from './pages/Auth.jsx';
 import {
@@ -43,7 +44,7 @@ export function App() {
         <Route path="/recommendations" element={<RecommendationsPage />} />
         <Route path="/properties/:id" element={<PropertyPage />} />
         <Route path="/properties/:id/tour" element={<TourPage />} />
-        <Route path="/properties/:id/tour3d" element={<Tour3DPage />} />
+        <Route path="/properties/:id/tour3d" element={<Suspense fallback={<div style={{ minHeight: '70vh', display: 'grid', placeContent: 'center' }}><Spinner big /></div>}><Tour3DPage /></Suspense>} />
         <Route path="/sellers/:id" element={<SellerPage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/history" element={<HistoryPage />} />

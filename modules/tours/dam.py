@@ -174,6 +174,40 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
     uv = uv.copy()
     uv[:, 1] = 1.0 - uv[:, 1]
 
+    # ---- robust outlier rejection ----------------------------------------
+    # For some models the .dam decode produces stray vertices tens of metres
+    # away (huge spikes) that wreck the dollhouse. The real geometry lives near
+    # the sweep positions (which come from JSON, not the .dam, so they're
+    # reliable). Drop any triangle that reaches far outside a generous box
+    # around the sweeps; if almost everything is outside, the decode is bad and
+    # we bail (the viewer then shows the clean marker-only dollhouse).
+    tri_all = idx.reshape(-1, 3).astype(np.int64)
+    n_tri_all = len(tri_all)
+    if sweeps:
+        sw = np.asarray(sweeps, dtype=np.float64)
+        lo, hi = sw.min(axis=0), sw.max(axis=0)
+    else:
+        lo, hi = np.percentile(pos, 1, axis=0), np.percentile(pos, 99, axis=0)
+    extent = hi - lo
+    margin = np.maximum(extent * 1.5, 8.0)   # walls/ceiling extend beyond sweeps
+    lo -= margin
+    hi += margin
+    finite = np.isfinite(pos).all(axis=1)
+    in_bounds = finite & np.all((pos >= lo) & (pos <= hi), axis=1)
+    keep = in_bounds[tri_all].all(axis=1)
+    if n_tri_all and keep.sum() < 0.15 * n_tri_all:
+        raise ValueError("dam decode produced mostly out-of-bounds geometry")
+    kept_tris = tri_all[keep]
+    # Compact: keep only the vertices the surviving triangles use, so the stray
+    # outlier vertices no longer exist (they'd otherwise inflate the model's
+    # bounding box and wreck the dollhouse camera framing).
+    used = np.unique(kept_tris)
+    remap = np.full(len(pos), -1, dtype=np.int64)
+    remap[used] = np.arange(len(used))
+    pos = pos[used]
+    uv = uv[used]
+    idx = remap[kept_tris].reshape(-1).astype(np.uint32)
+
     # ---- orient triangles so normals face the room interior --------------
     tris = idx.reshape(-1, 3).astype(np.int64)
     v0 = pos[tris[:, 0]]; v1 = pos[tris[:, 1]]; v2 = pos[tris[:, 2]]
@@ -303,9 +337,12 @@ def convert_dam_to_glb(zf: zipfile.ZipFile, names: list[str], dest: Path, axis_m
     for camera positions, so markers align with the mesh. `sweeps` are the
     sweep-camera positions in viewer space, used to orient the cutaway.
     """
-    dam_name = next((n for n in names if n.endswith(".dam")), None)
-    if not dam_name:
+    dam_candidates = [n for n in names if n.endswith(".dam")]
+    if not dam_candidates:
         return None
+    # Prefer the lighter 50k mesh: it decodes much faster and is plenty for the
+    # dollhouse/floor-plan. The 500k mesh would slow conversion a lot.
+    dam_name = next((n for n in dam_candidates if "_50k" in n), dam_candidates[0])
     try:
         data = zf.read(dam_name)
         chunks = parse_dam(data)

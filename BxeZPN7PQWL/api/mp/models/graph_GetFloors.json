@@ -1,0 +1,18 @@
+{
+  "data" : {
+    "model" : {
+      "id" : "BxeZPN7PQWL",
+      "floors" : [ {
+        "id" : "tsmq1wak12rhgn0mawksxcwcd",
+        "meshId" : 0,
+        "classification" : "",
+        "label" : "Floor 1",
+        "sequence" : 0,
+        "dimensions" : {
+          "areaFloor" : 589.4537602898597,
+          "units" : "imperial"
+        }
+      } ]
+    }
+  }
+}

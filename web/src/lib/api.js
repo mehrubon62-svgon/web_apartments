@@ -67,6 +67,32 @@ async function req(method, path, { body, params, isForm, retry = true, auth = tr
   return data;
 }
 
+// Upload with progress — fetch can't report upload %, so use XMLHttpRequest.
+// onProgress(percent) is called during the browser->server transfer (0..100).
+// After 100% the server is still converting; callers show "processing" then.
+function uploadWithProgress(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}${path}`);
+    if (TOKENS.access) xhr.setRequestHeader('Authorization', `Bearer ${TOKENS.access}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let data = null;
+      const ct = xhr.getResponseHeader('content-type') || '';
+      if (ct.includes('application/json')) { try { data = JSON.parse(xhr.responseText); } catch {} }
+      else data = xhr.responseText;
+      if (xhr.status >= 200 && xhr.status < 300) { resolve(data); return; }
+      let detail = (data && data.detail) || xhr.statusText || 'Ошибка загрузки';
+      if (Array.isArray(detail)) detail = detail.map((d) => d.msg || JSON.stringify(d)).join('; ');
+      reject(new ApiError(detail, xhr.status, data));
+    };
+    xhr.onerror = () => reject(new ApiError('Сеть недоступна. Проверьте подключение.', 0, null));
+    xhr.send(formData);
+  });
+}
+
 export const api = {
   base: API_BASE,
   config: CFG,
@@ -124,7 +150,11 @@ export const api = {
   shareRoom: (id, room_id) => req('GET', `/tours/${id}/share`, { params: { room_id } }),
   get3dTour: (id) => req('GET', `/tours/${id}/3d`),
   upload3dTour: (id, fd) => req('POST', `/tours/${id}/3d`, { body: fd, isForm: true }),
+  upload3dTourProgress: (id, fd, onProgress) => uploadWithProgress(`/tours/${id}/3d`, fd, onProgress),
+  get3dProgress: (id) => req('GET', `/tours/${id}/3d/progress`),
   delete3dTour: (id) => req('DELETE', `/tours/${id}/3d`),
+  get3dRooms: (id) => req('GET', `/tours/${id}/3d/rooms`),
+  rename3dRooms: (id, names) => req('PATCH', `/tours/${id}/3d/rooms`, { body: { names } }),
 
   askSpatial: (b) => req('POST', '/spatial-qa', { body: b }),
   spatialOne: (id) => req('GET', `/spatial-qa/${id}`),

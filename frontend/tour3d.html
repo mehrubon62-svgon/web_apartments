@@ -1,103 +1,199 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Nestora 3D Tour</title>
+<title>Nestora — 3D Tour</title>
 
 <!--
   ============================================================================
-  Nestora — 3D-тур квартиры (Matterport-подобный), один файл, на Three.js.
+  Nestora 3D Tour viewer — rebuilt from scratch (WebGL / Three.js).
   ----------------------------------------------------------------------------
-  Режимы:
-    1) Панорама (360°) — сфера с equirectangular-текстурой из skyboxes/.
-    2) Кукольный домик — 3D-модель mesh/model.glb, орбитальная камера.
-    3) План этажа — 2D-схема (картинка или авто-схема из координат комнат).
-  Плюс: навигация между комнатами (хотспоты + список), линейка (измерение),
-        адаптивность (мышь/тач), полностью локальные данные.
+  This is a faithful re-implementation of Matterport's showcase UX, using the
+  same rendering technology class Matterport uses: a real-time WebGL 3D engine
+  (Three.js), NOT a flat 360 library.
 
-  ОФЛАЙН-РЕЖИМ:
-    Этот файл грузит Three.js через import map с CDN (работает онлайн и через
-    локальный сервер). Для полного офлайна (file://) скачай three.module.js и
-    аддоны в папку ./vendor/ и замени URL в import map на относительные пути:
-      "three": "./vendor/three.module.js",
-      "three/addons/": "./vendor/addons/"
-    Открывать лучше через локальный сервер (python3 -m http.server),
-    т.к. браузеры блокируют fetch() текстур/JSON по file://.
+  Matterport's showcase (proven from the BxeZPN7PQWL/ dump) is a WebGL engine
+  that renders (a) per-sweep cubemap panoramas for the first-person view,
+  (b) a textured .dam 3D mesh for the dollhouse / floor-plan, and (c) walks
+  between sweeps driven by a neighbor graph + sweep world positions and
+  per-sweep quaternion headings.
+
+  Deviation we make explicit: the backend pre-stitches each sweep's 6 cube
+  faces into ONE equirectangular image (skyboxes/<uuid>.jpg) using the verified
+  face order [1,2,3,4,0,5] (F,R,B,L,U,D). The client therefore renders an
+  equirectangular sphere — the equirectangular path the spec explicitly allows
+  — which is seamless and avoids per-face seams. Same WebGL technology class.
+
+  Data layout consumed (produced by modules/tours/matterport.py):
+    metadata.json:
+      { name, scale, headingOffset, startRoom, mesh?,
+        rooms: [{ id, name, skybox, camera:{x,y,z}, heading,
+                  initialYaw, links:[{to,yaw,pitch}], plan:{x,y} }],
+        floorplan:{image,width,height}, measurements:[] }
+
+  Heading consistency (the "world spins on move" fix): every sweep's panorama
+  was captured with its own twist about the vertical axis. The backend bakes
+  that twist as `heading`. We rotate each panorama sphere by `heading`
+  (+ global headingOffset) into ONE shared world frame, and keep the camera's
+  world-yaw continuous across transitions. Navigation arrows are placed at the
+  neighbour's world-frame `yaw`. Result: walking never spins the world.
   ============================================================================
 -->
-
 <style>
   :root {
-    --brand: #c2502e; --accent: #1f5c4d; --ink: #1c1813;
-    --panel: rgba(20, 23, 28, 0.72); --panel-line: rgba(255,255,255,0.14);
-    --font: 'Hanken Grotesk', system-ui, -apple-system, Segoe UI, sans-serif;
+    --brand: #c2502e; --accent: #1f5c4d;
+    --panel: rgba(18, 21, 26, 0.72); --panel-line: rgba(255, 255, 255, 0.14);
+    --font: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: var(--font); color: #fff; }
   #app { position: fixed; inset: 0; }
   canvas { display: block; touch-action: none; }
 
-  /* Floating glass panels */
-  .panel { position: absolute; background: var(--panel); backdrop-filter: blur(12px);
-           border: 1px solid var(--panel-line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  .panel {
+    position: absolute; background: var(--panel); backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); border: 1px solid var(--panel-line);
+    border-radius: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .4); z-index: 10;
+  }
 
   /* Mode switch (top center) */
-  #modes { top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; z-index: 10; }
-  #modes button { border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13.5px;
-                  padding: 9px 16px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
-                  transition: background .15s; opacity: .8; }
+  #modes { top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; }
+  #modes button {
+    border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13.5px;
+    padding: 9px 16px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: background .15s, opacity .15s; opacity: .8;
+  }
   #modes button.active { background: var(--brand); opacity: 1; }
   #modes button:hover { opacity: 1; }
+  #modes button:disabled { opacity: .3; cursor: not-allowed; }
 
   /* Current room + selector (top left) */
-  #roombar { top: 16px; left: 16px; padding: 12px 14px; z-index: 10; min-width: 200px; }
+  #roombar { top: 16px; left: 16px; padding: 12px 14px; min-width: 210px; max-width: 46vw; }
   #roombar .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .6; }
   #roombar .current { font-size: 18px; font-weight: 700; margin: 2px 0 10px; }
-  #roomSelect { width: 100%; background: rgba(0,0,0,.35); color: #fff; border: 1px solid var(--panel-line);
-                border-radius: 9px; padding: 9px 10px; font: inherit; font-weight: 600; }
+  #roomSelect, #floorSelect {
+    width: 100%; background: rgba(0, 0, 0, .35); color: #fff; border: 1px solid var(--panel-line);
+    border-radius: 9px; padding: 9px 10px; font: inherit; font-weight: 600;
+  }
 
   /* Tools (bottom center) */
-  #tools { bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; z-index: 10; }
-  #tools button { border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13px;
-                  padding: 9px 14px; border-radius: 10px; cursor: pointer; opacity: .85; display: inline-flex; gap: 6px; align-items: center; }
+  #tools { bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; }
+  #tools button {
+    border: none; background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 13px;
+    padding: 9px 13px; border-radius: 10px; cursor: pointer; opacity: .85; display: inline-flex; gap: 6px; align-items: center;
+  }
   #tools button.active { background: var(--accent); opacity: 1; }
+  #tools button:hover { opacity: 1; }
 
   /* Floorplan overlay */
-  #planWrap { right: 16px; bottom: 16px; width: min(320px, 42vw); padding: 10px; z-index: 10; display: none; }
+  #planWrap { right: 16px; bottom: 16px; width: min(340px, 44vw); padding: 10px; display: none; }
   #planWrap.show { display: block; }
   #planWrap .ttl { font-size: 12px; font-weight: 700; opacity: .8; margin-bottom: 6px; padding-left: 4px; }
-  #plan { width: 100%; border-radius: 10px; display: block; background: rgba(0,0,0,.25); cursor: pointer; }
+  #plan { width: 100%; border-radius: 10px; display: block; background: rgba(0, 0, 0, .25); cursor: pointer; }
 
   /* Measurement readout */
-  #measureInfo { bottom: 70px; left: 50%; transform: translateX(-50%); padding: 8px 14px; z-index: 10;
-                 font-weight: 700; display: none; }
+  #measureInfo {
+    bottom: 70px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-weight: 700; display: none;
+  }
   #measureInfo.show { display: block; }
 
-  /* Hotspot labels (CSS2D) */
-  .hotspot { width: 44px; height: 44px; border-radius: 50%; background: rgba(28,24,19,.78);
-             border: 2px solid rgba(255,255,255,.85); display: grid; place-content: center; cursor: pointer;
-             box-shadow: 0 6px 16px rgba(0,0,0,.4); transition: transform .15s, background .15s; pointer-events: auto; }
-  .hotspot:hover { transform: scale(1.15); background: var(--brand); }
+  /* Navigation hotspots / markers (CSS2D) */
+  .hotspot {
+    width: 46px; height: 46px; border-radius: 50%; background: rgba(20, 23, 28, .80);
+    border: 2px solid rgba(255, 255, 255, .9); display: grid; place-content: center; cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .45); transition: transform .15s, background .15s; pointer-events: auto;
+  }
+  .hotspot:hover { transform: scale(1.16); background: var(--brand); }
   .hotspot svg { width: 24px; height: 24px; }
-  .hotspot .tip { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); white-space: nowrap;
-                  background: rgba(20,23,28,.92); padding: 5px 11px; border-radius: 100px; font-size: 12px; font-weight: 700;
-                  opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .hotspot .tip {
+    position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+    background: rgba(18, 21, 26, .92); padding: 5px 11px; border-radius: 100px; font-size: 12px; font-weight: 700;
+    opacity: 0; transition: opacity .15s; pointer-events: none;
+  }
   .hotspot:hover .tip { opacity: 1; }
+  .marker { width: 30px; height: 30px; }
 
+  /* Top-right controls */
+  #topright { top: 16px; right: 16px; display: flex; gap: 6px; }
+  #topright button { width: 40px; height: 40px; border: none; background: var(--panel); color: #fff;
+    border: 1px solid var(--panel-line); border-radius: 11px; cursor: pointer; display: grid; place-content: center;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  #topright button:hover { background: var(--brand); }
+
+  /* Crossfade veil for ultra-smooth transitions */
+  #fade { position: absolute; inset: 0; background: #0c0d12; opacity: 0; pointer-events: none;
+          transition: opacity .35s ease; z-index: 5; }
+  #fade.show { opacity: .0; }
+
+  /* Loading / error */
   #loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 14px; justify-items: center;
              background: #0c0d12; z-index: 50; transition: opacity .4s; }
   #loading.hide { opacity: 0; pointer-events: none; }
-  .spinner { width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.2); border-top-color: var(--brand);
+  .spinner { width: 42px; height: 42px; border: 3px solid rgba(255, 255, 255, .2); border-top-color: var(--brand);
              border-radius: 50%; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #hint { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); z-index: 9; font-size: 13px;
-          background: rgba(20,23,28,.7); padding: 7px 14px; border-radius: 100px; pointer-events: none; opacity: 0; transition: opacity .3s; }
+  #hint { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); z-index: 9; font-size: 13px;
+          background: rgba(18, 21, 26, .7); padding: 7px 14px; border-radius: 100px; pointer-events: none;
+          opacity: 0; transition: opacity .3s; }
   #hint.show { opacity: 1; }
   #err { position: absolute; inset: 0; display: none; place-content: center; text-align: center; padding: 30px; z-index: 60; }
+  #err h2 { margin: 0 0 6px; }
+
+  /* ===== Nestora watermark — persistent in every mode + fullscreen ===== */
+  #nestora-watermark {
+    position: absolute; right: 14px; bottom: 12px; z-index: 40; pointer-events: none;
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 100px;
+    background: rgba(12, 13, 18, .9); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, .22); box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+    user-select: none; font-family: var(--font); color: #fff;
+  }
+  #nestora-watermark .wm-mark { width: 22px; height: 22px; display: block; color: #fff; }
+  #nestora-watermark .wm-text { font-size: 15px; font-weight: 600; letter-spacing: -.02em;
+    display: inline-flex; align-items: baseline; }
+  #nestora-watermark .wm-text i { font-style: italic; color: var(--brand); font-weight: 600; }
+  #nestora-watermark .wm-sub { font-size: 10px; font-weight: 700; opacity: .75; margin-left: 3px;
+    align-self: flex-start; letter-spacing: .04em; }
+  /* keep the badge clear of the floor-plan overlay */
+  #planWrap.show ~ #nestora-watermark { bottom: calc(16px + 44vw * 0.66); }
+
+  /* ===== Floor selector (custom dropdown) ===== */
+  #floorDrop { top: 16px; left: 16px; padding: 5px; min-width: 150px; }
+  #floorBtn { width: 100%; display: flex; align-items: center; gap: 8px; border: none; cursor: pointer;
+    background: transparent; color: #fff; font: inherit; font-weight: 700; font-size: 14px; padding: 9px 12px;
+    border-radius: 10px; }
+  #floorBtn:hover { background: rgba(255,255,255,.08); }
+  #floorBtn #floorBtnLabel { flex: 1; text-align: left; }
+  #floorBtn .chev { opacity: .8; transition: transform .2s; }
+  #floorDrop.open #floorBtn .chev { transform: rotate(180deg); }
+  #floorMenu { display: none; flex-direction: column; gap: 2px; padding: 4px 4px 2px; }
+  #floorDrop.open #floorMenu { display: flex; }
+  #floorMenu button { border: none; cursor: pointer; background: transparent; color: #fff; font: inherit;
+    font-weight: 600; font-size: 13.5px; text-align: left; padding: 9px 12px; border-radius: 9px; opacity: .82; }
+  #floorMenu button:hover { background: rgba(255,255,255,.1); opacity: 1; }
+  #floorMenu button.active { background: var(--brand); opacity: 1; }
+
+  /* ===== Point carousel (bottom) — iPod-cover-flow-ish strip of thumbnails ===== */
+  #carousel { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 12; display: flex;
+    justify-content: center; pointer-events: none; }
+  #carTrack { display: flex; gap: 10px; padding: 10px 14px; max-width: min(92vw, 920px); overflow-x: auto;
+    overflow-y: hidden; scroll-behavior: smooth; pointer-events: auto;
+    background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--panel-line); border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.3) transparent; }
+  #carTrack::-webkit-scrollbar { height: 7px; }
+  #carTrack::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border-radius: 100px; }
+  .car-card { flex: 0 0 auto; width: 104px; cursor: pointer; border-radius: 11px; overflow: hidden;
+    background: rgba(0,0,0,.35); border: 2px solid transparent; transition: transform .18s, border-color .18s, opacity .18s;
+    opacity: .72; }
+  .car-card:hover { transform: translateY(-4px); opacity: 1; }
+  .car-card.active { border-color: var(--brand); opacity: 1; transform: translateY(-6px) scale(1.04); }
+  .car-card .ph { width: 104px; height: 66px; display: block; object-fit: cover; background: #1a1d24; }
+  .car-card .nm { font-size: 11px; font-weight: 700; padding: 5px 7px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; color: #fff; }
 </style>
 
-<!-- Import map: three core + addons. Replace with ./vendor/ for offline file://. -->
+<!-- three core + addons via import map (online CDN, pinned to 0.169.0). -->
 <script type="importmap">
 {
   "imports": {
@@ -109,52 +205,55 @@
 </head>
 <body>
 <div id="app"></div>
+<div id="fade"></div>
 
-<div id="loading"><div class="spinner"></div><div>Загрузка тура…</div></div>
-<div id="err" class="panel"><div><h2>Не удалось загрузить тур</h2><p id="errmsg" style="opacity:.8"></p></div></div>
+<div id="loading"><div class="spinner"></div><div>Loading tour…</div></div>
+<div id="err" class="panel"><div><h2>Could not load the tour</h2><p id="errmsg" style="opacity:.8"></p></div></div>
 
 <!-- Mode switch -->
 <div id="modes" class="panel">
-  <button data-mode="pano" class="active">
+  <button data-mode="pano" class="active" title="First-person panorama">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18"/></svg>
-    Панорама
+    Panorama
   </button>
-  <button data-mode="doll">
+  <button data-mode="doll" title="Dollhouse / 3D mesh">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>
-    Кукольный домик
+    Dollhouse
   </button>
-  <button data-mode="plan">
+  <button data-mode="plan" title="Top-down floor plan">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
-    План
+    Floor plan
   </button>
 </div>
 
-<!-- Current room + selector -->
-<div id="roombar" class="panel">
-  <div class="label">Текущая комната</div>
-  <div class="current" id="curRoom">—</div>
-  <select id="roomSelect"></select>
+<!-- Floor selector (custom dropdown; shown only for multi-floor models) -->
+<div id="floorDrop" class="panel" style="display:none">
+  <button id="floorBtn" type="button">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-7h6v7"/></svg>
+    <span id="floorBtnLabel">Floor 1</span>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+  <div id="floorMenu"></div>
 </div>
 
-<!-- Tools -->
-<div id="tools" class="panel">
-  <button id="measureBtn">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></svg>
-    Линейка
-  </button>
-  <button id="resetBtn">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9a5 5 0 0 1 9-3l3 3"/><path d="m16 3 .5 6-6-.5"/></svg>
-    Сброс вида
-  </button>
+<!-- Point carousel (bottom center): a scrollable strip of every capture point
+     with a forward-looking thumbnail — the current-point selector. -->
+<div id="carousel">
+  <div id="carTrack"></div>
 </div>
-
-<div id="measureInfo" class="panel"></div>
-<div id="hint">Перетащите для осмотра • колесо — зум</div>
+<div id="hint">Drag to look • scroll to zoom • click an arrow to walk</div>
 
 <!-- Floorplan -->
 <div id="planWrap" class="panel">
-  <div class="ttl">План этажа</div>
-  <canvas id="plan" width="600" height="400"></canvas>
+  <div class="ttl">Floor plan</div>
+  <canvas id="plan" width="640" height="430"></canvas>
+</div>
+
+<!-- Persistent Nestora watermark (rendered above the WebGL canvas in all modes). -->
+<div id="nestora-watermark" aria-hidden="true">
+  <svg class="wm-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21 V11 Q12 3 19 11 V21"/><path d="M10 21 V17 Q12 14 14 17 V21"/></svg>
+  <span class="wm-text"><b>Nest</b><i>o</i><b>ra</b></span>
+  <span class="wm-sub">3D</span>
 </div>
 
 <script type="module">
@@ -163,31 +262,31 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
-// ============================================================================
-// 0. Config / data loading
-// ============================================================================
-// The data folder ("skyboxes/", "mesh/", "metadata.json") is passed via the
-// ?base= query param when embedded in Nestora, e.g. /media-files/tours3d/5/.
-// Falls back to "./" for standalone local testing.
-const _params = new URLSearchParams(location.search);
-let BASE = _params.get('base') || './';
-if (!BASE.endsWith('/')) BASE += '/';
 const $ = (s) => document.querySelector(s);
-const errEl = $('#err'), loadingEl = $('#loading');
+const DEG = THREE.MathUtils.degToRad;
 
+// ============================================================================
+// 0. Data loading — ?base=<folder> points at the extracted tour.
+// ============================================================================
+const params = new URLSearchParams(location.search);
+let BASE = params.get('base') || './';
+if (!BASE.endsWith('/')) BASE += '/';
+// Deep-link target: ?room=<id> (alias ?sweep=) selects the starting sweep.
+const DEEP_ROOM = params.get('room') || params.get('sweep') || null;
+
+const loadingEl = $('#loading'), errEl = $('#err');
 function fail(msg) {
   loadingEl.classList.add('hide');
   errEl.style.display = 'grid';
   $('#errmsg').textContent = msg;
-  console.error(msg);
+  console.error('[tour3d]', msg);
 }
 
-// Default metadata if metadata.json is missing — keeps the viewer usable.
 const FALLBACK_META = {
-  name: 'Demo tour', startRoom: 'room1', scale: 1,
-  rooms: [{ id: 'room1', name: 'Комната 1', skybox: 'skyboxes/1.jpg', camera: { x: 0, y: 1.6, z: 0 }, initialYaw: 0, links: [], plan: { x: 0.5, y: 0.5 } }],
-  floorplan: { image: null, width: 600, height: 400 },
-  measurements: [],
+  name: 'Demo tour', startRoom: 'room1', scale: 1, headingOffset: 0,
+  rooms: [{ id: 'room1', name: 'Room 1', skybox: 'skyboxes/1.jpg',
+    camera: { x: 0, y: 1.6, z: 0 }, heading: 0, initialYaw: 0, links: [], plan: { x: 0.5, y: 0.5 } }],
+  floorplan: { image: null, width: 640, height: 430 }, measurements: [],
 };
 
 let META = null;
@@ -195,287 +294,484 @@ try {
   const res = await fetch(BASE + 'metadata.json', { cache: 'no-cache' });
   META = res.ok ? await res.json() : null;
 } catch { META = null; }
-if (!META) { META = FALLBACK_META; console.warn('metadata.json не найден — использую запасные данные.'); }
+if (!META || !Array.isArray(META.rooms) || !META.rooms.length) {
+  console.warn('[tour3d] metadata.json missing/empty — using fallback.');
+  META = FALLBACK_META;
+}
 
 const ROOMS = META.rooms || [];
 const ROOM_BY_ID = Object.fromEntries(ROOMS.map((r) => [r.id, r]));
 const SCALE = META.scale || 1;
+const HEADING_OFFSET = META.headingOffset || 0;
+const FLOORS = (META.floors && META.floors.length) ? META.floors : [];
+let currentFloor = 0;
+const onCurrentFloor = (r) => FLOORS.length <= 1 || ((r && r.floor) || 0) === currentFloor;
 
 // ============================================================================
 // 1. Renderer / scene / cameras
 // ============================================================================
 const app = $('#app');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.localClippingEnabled = true;   // floor plan cuts the mesh at waist height
 renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
 
-// CSS2D layer for hotspots (HTML labels positioned in 3D).
 const labelRenderer = new CSS2DRenderer();
 labelRenderer.setSize(innerWidth, innerHeight);
-labelRenderer.domElement.style.position = 'absolute';
-labelRenderer.domElement.style.top = '0';
-labelRenderer.domElement.style.pointerEvents = 'none';
+Object.assign(labelRenderer.domElement.style, { position: 'absolute', top: '0', left: '0', pointerEvents: 'none' });
 app.appendChild(labelRenderer.domElement);
 
 const scene = new THREE.Scene();
+scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+dirLight.position.set(4, 10, 6);
+scene.add(dirLight);
 
-// Panorama camera sits at origin; we rotate it in place.
-const panoCam = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1100);
-panoCam.position.set(0, 0, 0.01);
-
-// Dollhouse camera orbits the model.
-const dollCam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 1000);
-dollCam.position.set(6, 7, 9);
-
+// Panorama camera sits at the sweep (origin) and only rotates.
+const panoCam = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.1, 1100);
+// Dollhouse camera orbits the mesh.
+const dollCam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 2000);
+dollCam.position.set(6, 8, 10);
 let activeCam = panoCam;
 
 // ============================================================================
-// 2. Panorama sphere
+// 2. Panorama spheres (two, for a real crossfade between sweeps)
 // ============================================================================
 const texLoader = new THREE.TextureLoader();
-const sphereGeo = new THREE.SphereGeometry(500, 60, 40);
-sphereGeo.scale(-1, 1, 1);                 // invert so texture faces inward
-const sphereMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
-const panoSphere = new THREE.Mesh(sphereGeo, sphereMat);
-scene.add(panoSphere);
+texLoader.crossOrigin = 'anonymous';
 
-function loadPanorama(room) {
-  if (!room?.skybox) return;
-  texLoader.load(
-    BASE + room.skybox,
-    (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      if (sphereMat.map) sphereMat.map.dispose();
-      sphereMat.map = tex; sphereMat.needsUpdate = true;
-    },
-    undefined,
-    () => console.warn('Не удалось загрузить панораму:', room.skybox)
-  );
+function makeSphere(radius, renderOrder) {
+  const geo = new THREE.SphereGeometry(radius, 64, 44);
+  // Flip the geometry on X so we view the (non-mirrored) texture from the
+  // inside, exactly like the three.js equirectangular panorama example. NOTE:
+  // this already makes the inner faces front-facing, so we must keep the
+  // DEFAULT side (FrontSide) — combining it with BackSide double-flips and
+  // culls everything, leaving a black screen.
+  geo.scale(-1, 1, 1);
+  const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 1, depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = renderOrder;
+  scene.add(mesh);
+  return mesh;
+}
+// front sphere (incoming) is slightly smaller so it composites over the back one
+const sphereBack = makeSphere(500, 0);
+const sphereFront = makeSphere(498, 1);
+sphereFront.material.opacity = 0;
+sphereFront.visible = false;
+
+const texCache = new Map();
+function loadTexture(url) {
+  if (texCache.has(url)) return Promise.resolve(texCache.get(url));
+  return new Promise((resolve, reject) => {
+    texLoader.load(url, (t) => { t.colorSpace = THREE.SRGBColorSpace; texCache.set(url, t); resolve(t); },
+      undefined, () => reject(new Error('texture load failed: ' + url)));
+  });
+}
+
+// world-frame heading applied to a sphere so all panoramas share one frame.
+// `heading` was baked as -twist (twist = the sweep's capture rotation about the
+// vertical). To bring the texture into the shared world frame the sphere must
+// rotate by +twist = -heading, so we NEGATE heading here. Using +heading gives
+// the wrong sign, so the view rotates a little more with every step you take
+// (the "arrows get more crooked each move" bug).
+// PANO_YAW_FIX (180°) is the constant offset between the equirect centre (Front
+// face, longitude 0, which lands at world -X on the x-flipped sphere) and the
+// camera's yaw=0 (+X). It is a property of the equirect+sphere convention, not
+// of the data, so it's added once for every sweep.
+const PANO_YAW_FIX = 180;
+function applyHeading(mesh, room) {
+  mesh.rotation.set(0, DEG(-(room.heading || 0) + HEADING_OFFSET + PANO_YAW_FIX), 0);
 }
 
 // ============================================================================
-// 3. Controls
+// 3. Panorama look controller — camera holds a WORLD yaw/pitch.
+//    Keeping world-yaw continuous across sweeps is what stops the world from
+//    spinning when you walk (combined with per-sweep heading on the sphere).
 // ============================================================================
-// Panorama: classic lon/lat drag controller — camera fixed at center, we aim it
-// by spherical angles. Robust (no OrbitControls jitter) and makes initialYaw
-// land exactly. Works with mouse + touch; wheel/pinch zoom via FOV.
-const panoView = { lon: 0, lat: 0, targetLon: 0, targetLat: 0 };
-let panoDragging = false, panoPrev = { x: 0, y: 0 }, pinchDist = 0;
+const view = { yaw: 0, pitch: 0, targetYaw: 0, targetPitch: 0, fov: 72 };
+let dragging = false, last = { x: 0, y: 0 }, pinch = 0;
+// Small camera dolly used by the "move forward" transition. aimPano honours it
+// so we can push the camera toward the target sweep during a jump.
+const camOffset = new THREE.Vector3();
 
+// our yaw convention matches modules/tours/matterport.py exactly:
+//   direction(yaw,pitch) = (cos p·cos y, sin p, cos p·sin y)
+// so an arrow at link.yaw points toward the neighbour (da, *, -db) in world space.
+function dirFromAngles(yawDeg, pitchDeg, r = 1) {
+  const y = DEG(yawDeg), p = DEG(pitchDeg);
+  return new THREE.Vector3(r * Math.cos(p) * Math.cos(y), r * Math.sin(p), r * Math.cos(p) * Math.sin(y));
+}
 function aimPano() {
-  const phi = THREE.MathUtils.degToRad(90 - panoView.lat);
-  const theta = THREE.MathUtils.degToRad(panoView.lon);
-  panoCam.lookAt(
-    500 * Math.sin(phi) * Math.cos(theta),
-    500 * Math.cos(phi),
-    500 * Math.sin(phi) * Math.sin(theta)
-  );
+  panoCam.position.copy(camOffset);
+  // look the same world direction regardless of the dolly offset
+  panoCam.lookAt(dirFromAngles(view.yaw, view.pitch, 100).add(camOffset));
 }
-function panoDown(e) {
-  if (MODE !== 'pano' || MEASURE) return;
-  panoDragging = true;
+
+function onDown(e) {
+  if (MODE !== 'pano') return;
+  dragging = true;
   const p = e.touches ? e.touches[0] : e;
-  panoPrev = { x: p.clientX, y: p.clientY };
-  if (e.touches && e.touches.length === 2) {
-    pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-  }
+  last = { x: p.clientX, y: p.clientY };
+  if (e.touches && e.touches.length === 2) pinch = touchDist(e);
 }
-function panoMove(e) {
-  if (!panoDragging || MODE !== 'pano') return;
+function onMove(e) {
+  if (!dragging || MODE !== 'pano') return;
   if (e.touches && e.touches.length === 2) {
-    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    if (pinchDist) { panoCam.fov = THREE.MathUtils.clamp(panoCam.fov - (d - pinchDist) * 0.1, 35, 90); panoCam.updateProjectionMatrix(); }
-    pinchDist = d; return;
+    const d = touchDist(e);
+    if (pinch) { view.fov = THREE.MathUtils.clamp(view.fov - (d - pinch) * 0.1, 32, 92); panoCam.fov = view.fov; panoCam.updateProjectionMatrix(); }
+    pinch = d; return;
   }
   const p = e.touches ? e.touches[0] : e;
-  panoView.targetLon -= (p.clientX - panoPrev.x) * 0.12;
-  panoView.targetLat = THREE.MathUtils.clamp(panoView.targetLat + (p.clientY - panoPrev.y) * 0.12, -85, 85);
-  panoPrev = { x: p.clientX, y: p.clientY };
+  view.targetYaw -= (p.clientX - last.x) * 0.12;   // grab-style: drag right -> look left
+  view.targetPitch = THREE.MathUtils.clamp(view.targetPitch + (p.clientY - last.y) * 0.12, -85, 85);
+  last = { x: p.clientX, y: p.clientY };
 }
-function panoUp() { panoDragging = false; pinchDist = 0; }
-renderer.domElement.addEventListener('mousedown', panoDown);
-renderer.domElement.addEventListener('mousemove', panoMove);
-window.addEventListener('mouseup', panoUp);
-renderer.domElement.addEventListener('touchstart', panoDown, { passive: true });
-renderer.domElement.addEventListener('touchmove', panoMove, { passive: true });
-renderer.domElement.addEventListener('touchend', panoUp);
+function onUp() { dragging = false; pinch = 0; }
+function touchDist(e) { return Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+
+renderer.domElement.addEventListener('mousedown', onDown);
+renderer.domElement.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+renderer.domElement.addEventListener('touchstart', onDown, { passive: true });
+renderer.domElement.addEventListener('touchmove', onMove, { passive: true });
+renderer.domElement.addEventListener('touchend', onUp);
 renderer.domElement.addEventListener('wheel', (e) => {
   if (MODE !== 'pano') return;
-  panoCam.fov = THREE.MathUtils.clamp(panoCam.fov + e.deltaY * 0.05, 35, 90);
-  panoCam.updateProjectionMatrix();
+  view.fov = THREE.MathUtils.clamp(view.fov + e.deltaY * 0.05, 32, 92);
+  panoCam.fov = view.fov; panoCam.updateProjectionMatrix();
 }, { passive: true });
 
-// Dollhouse: orbit the model.
-const dollControls = new OrbitControls(dollCam, renderer.domElement);
-dollControls.enableDamping = true; dollControls.dampingFactor = 0.08;
-dollControls.maxPolarAngle = Math.PI / 2.05;
-dollControls.enabled = false;
+// Dollhouse orbit controls
+const orbit = new OrbitControls(dollCam, renderer.domElement);
+orbit.enableDamping = false;   // 1:1 rotation, no inertia/lag
+orbit.maxPolarAngle = Math.PI / 2.02;
+orbit.enabled = false;
 
-// ============================================================================
-// 4. Hotspots (navigation arrows on the panorama)
-// ============================================================================
-const hotspotGroup = new THREE.Group();
-scene.add(hotspotGroup);
+// Floor-plan camera: a strict top-down ORTHOGRAPHIC view of the very same
+// dollhouse mesh (so "floor plan" is just the dollhouse seen from straight
+// above, not a separate 2D drawing). Its OrbitControls are locked to looking
+// straight down (polar ~0); you can still rotate the plan about the vertical,
+// pan and zoom.
+const planCam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.01, 5000);
+const planOrbit = new OrbitControls(planCam, renderer.domElement);
+planOrbit.enableDamping = false;
+planOrbit.minPolarAngle = 0;
+planOrbit.maxPolarAngle = 0.0001;       // keep it top-down (no tilting)
+planOrbit.screenSpacePanning = true;
+planOrbit.enabled = false;
+let modelBox = null;                     // whole-mesh bounds (single-floor framing)
+// Horizontal section cut for the floor plan: keeps geometry BELOW `constant`
+// (normal points down, so normal·p + constant >= 0  <=>  y <= constant). This
+// removes the ceiling/upper storeys and, rendered DOUBLE-SIDED, guarantees a
+// solid floor + wall sections with no back-face "holes" — independent of how
+// the mesh normals happen to be oriented.
+const planClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
 
-function clearHotspots() {
-  [...hotspotGroup.children].forEach((c) => { hotspotGroup.remove(c); if (c.element) c.element.remove(); });
+// Frame the floor plan onto floor `f` (or the whole model when single-floor).
+function framePlan(f) {
+  const box = (FLOORS.length > 1 && floorBounds[f] && !floorBounds[f].isEmpty()) ? floorBounds[f] : modelBox;
+  if (!box || box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const s = box.getSize(new THREE.Vector3());
+  const aspect = innerWidth / innerHeight;
+  const halfH = Math.max(s.z, s.x / aspect) * 0.6 + 1;
+  planCam.left = -halfH * aspect; planCam.right = halfH * aspect;
+  planCam.top = halfH; planCam.bottom = -halfH;
+  planCam.near = 0.01; planCam.far = (s.y + 200) * 2;
+  planCam.zoom = 1;
+  planCam.position.set(c.x, c.y + s.y + 60, c.z);
+  planOrbit.target.copy(c);
+  // cut ~1.35 m above this floor's slab: walls show as sections, ceiling gone
+  planClip.constant = box.min.y + 1.35;
+  planCam.updateProjectionMatrix();
+  planOrbit.update();
 }
-// yaw/pitch (deg) -> a point on the sphere around the viewer
-function dirFromAngles(yawDeg, pitchDeg, radius = 60) {
-  const yaw = THREE.MathUtils.degToRad(yawDeg), pitch = THREE.MathUtils.degToRad(pitchDeg);
-  return new THREE.Vector3(
-    radius * Math.cos(pitch) * Math.sin(yaw),
-    radius * Math.sin(pitch),
-    radius * Math.cos(pitch) * Math.cos(yaw)
-  );
+
+// ============================================================================
+// 4. Navigation hotspots (Street-View style floor arrows from `neighbors`)
+// ============================================================================
+const hotspots = new THREE.Group();
+scene.add(hotspots);
+function clearHotspots() {
+  [...hotspots.children].forEach((c) => { hotspots.remove(c); if (c.element) c.element.remove(); });
 }
 function buildHotspots(room) {
   clearHotspots();
   (room.links || []).forEach((link) => {
     const dest = ROOM_BY_ID[link.to];
+    // Only show arrows to neighbours on the SAME floor — otherwise a sweep next
+    // to a staircase shows arrows that visually point "through" a wall/ceiling
+    // toward another level's points. Cross-floor jumps happen via the floor
+    // selector + dollhouse instead.
+    if (FLOORS.length > 1 && dest && (dest.floor || 0) !== (room.floor || 0)) return;
     const el = document.createElement('div');
     el.className = 'hotspot';
     el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 11l6-6 6 6"/></svg><span class="tip">${dest ? dest.name : link.to}</span>`;
     el.addEventListener('click', (e) => { e.stopPropagation(); goToRoom(link.to); });
     const obj = new CSS2DObject(el);
-    obj.position.copy(dirFromAngles(link.yaw ?? 0, link.pitch ?? -8));
-    hotspotGroup.add(obj);
+    // Plant the arrow on the FLOOR toward the neighbour so it stays anchored to
+    // the scene (not floating in mid-air) and arrows don't clump together: the
+    // horizontal distance is the REAL distance to that neighbour (clamped). The
+    // drop is a FIXED eye-height (~1.5 m) below the camera — the camera always
+    // sits at the sphere origin (y=0), so the floor is at -1.5 m regardless of
+    // which storey we're on. (Using room.camera.y here was the bug: that's the
+    // sweep's absolute world height, which is negative on a lower floor, so the
+    // arrows shot UP to the ceiling instead of resting on the floor.)
+    const eye = 1.5 * SCALE;
+    const c0 = room.camera || { x: 0, z: 0 };
+    let d = 2.6;
+    if (dest && dest.camera) d = Math.min(6, Math.max(1.6, Math.hypot(dest.camera.x - c0.x, dest.camera.z - c0.z)));
+    const yr = DEG(link.yaw ?? 0);
+    obj.position.set(Math.cos(yr) * d, -eye, Math.sin(yr) * d);
+    hotspots.add(obj);
   });
 }
 
 // ============================================================================
-// 5. Dollhouse model + clickable room markers
+// 5. Dollhouse mesh + clickable sweep markers (same frame as camera positions)
 // ============================================================================
-const dollGroup = new THREE.Group();
-dollGroup.visible = false;
-scene.add(dollGroup);
-let modelMesh = null;          // for raycast measuring
-const roomMarkers = new THREE.Group();
-dollGroup.add(roomMarkers);
+const doll = new THREE.Group();
+doll.visible = false;
+scene.add(doll);
+let meshObj = null;          // for measuring against the real mesh
+let meshLoaded = false;
+const markers = new THREE.Group();
+doll.add(markers);
 
-function addRoomMarkers() {
+function addMarkers() {
   ROOMS.forEach((r) => {
-    const c = r.camera || { x: 0, y: 0, z: 0 };
-    const m = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xc2502e })
-    );
-    m.position.set(c.x * SCALE, (c.y || 1.2) * SCALE, c.z * SCALE);
-    m.userData.roomId = r.id;
-    roomMarkers.add(m);
+    const c = r.camera || { x: 0, y: 1.5, z: 0 };
+    // The sweep camera sits ~1.5 m above the floor; drop the marker by that so
+    // it rests ON the floor instead of floating at eye height. A thin flat disc
+    // (cylinder) reads as a planted floor marker, like Matterport's.
+    const floorY = ((c.y ?? 1.5) - 1.5) * SCALE + 0.03;
+    const dot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.22, 0.05, 28),
+      new THREE.MeshBasicMaterial({ color: 0xc2502e }));
+    dot.position.set(c.x * SCALE, floorY, c.z * SCALE);
+    dot.userData.roomId = r.id;
+    dot.userData.floor = (r.floor || 0);
+    markers.add(dot);
 
     const el = document.createElement('div');
-    el.className = 'hotspot'; el.style.width = el.style.height = '30px';
+    el.className = 'hotspot marker';
     el.innerHTML = `<span class="tip" style="opacity:1;bottom:34px">${r.name}</span>`;
     el.addEventListener('click', () => goToRoom(r.id));
     const label = new CSS2DObject(el);
-    label.position.copy(m.position);
-    roomMarkers.add(label);
+    label.position.set(c.x * SCALE, floorY + 0.25, c.z * SCALE);
+    label.userData.floor = (r.floor || 0);
+    markers.add(label);
+  });
+  applyFloorVisibility();
+  // When there is no .dam mesh, derive the plan/floor bounds from the marker
+  // positions so the top-down floor plan still frames each floor correctly.
+  if (!floorBounds.length || floorBounds.every((b) => b.isEmpty())) {
+    const pad = new THREE.Vector3(2, 1, 2);
+    const all = new THREE.Box3();
+    floorBounds = (FLOORS.length ? FLOORS : [{}]).map(() => new THREE.Box3());
+    markers.children.forEach((c) => {
+      if (!c.isMesh) return;
+      all.expandByPoint(c.position);
+      const f = (c.userData && c.userData.floor) || 0;
+      if (floorBounds[f]) floorBounds[f].expandByPoint(c.position);
+    });
+    floorBounds.forEach((b) => { if (!b.isEmpty()) b.expandByVector(pad); });
+    if (!all.isEmpty()) { all.expandByVector(pad); if (!modelBox) modelBox = all; }
+  }
+}
+
+// Show only the selected floor's markers in the dollhouse (multi-floor only),
+// so points of different floors don't stack on top of each other.
+function applyFloorVisibility() {
+  markers.children.forEach((c) => {
+    if (c.userData && c.userData.floor != null) {
+      const on = FLOORS.length <= 1 || c.userData.floor === currentFloor;
+      c.visible = on;
+      if (c.element) c.element.style.display = on ? '' : 'none';
+    }
   });
 }
 
-function loadModel() {
-  if (!META.mesh) { addRoomMarkers(); return; }
-  new GLTFLoader().load(
-    BASE + META.mesh,
-    (gltf) => {
-      const model = gltf.scene;
-      model.traverse((o) => { if (o.isMesh && !modelMesh) modelMesh = o; });
-      dollGroup.add(model);
-      // center & frame the model
-      const box = new THREE.Box3().setFromObject(model);
-      const center = box.getCenter(new THREE.Vector3());
-      dollControls.target.copy(center);
-      const size = box.getSize(new THREE.Vector3()).length();
-      dollCam.position.copy(center).add(new THREE.Vector3(size * 0.5, size * 0.5, size * 0.6));
-      addRoomMarkers();
-    },
-    undefined,
-    () => { console.warn('mesh не найден — показываю только маркеры комнат.'); addRoomMarkers(); }
-  );
-}
-loadModel();
+let floorMeshes = [];           // per-floor sub-meshes (multi-floor only)
+let floorBounds = [];           // per-floor Box3 (for the camera framing animation)
+let texMat = null;              // the textured dollhouse material
+const greyMat = new THREE.MeshStandardMaterial({ color: 0x888d96, roughness: 1, metalness: 0, transparent: true, opacity: 0.28, depthWrite: false });
 
-// ============================================================================
-// 6. Measurement tool (works in dollhouse against real mesh => meters)
-// ============================================================================
-let MEASURE = false;
-let measurePts = [];
-const measureGroup = new THREE.Group();
-scene.add(measureGroup);
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
-
-function clearMeasure() {
-  [...measureGroup.children].forEach((c) => measureGroup.remove(c));
-  measurePts = [];
-  $('#measureInfo').classList.remove('show');
-}
-function addMeasurePoint(p) {
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  dot.position.copy(p); measureGroup.add(dot);
-  measurePts.push(p.clone());
-  if (measurePts.length === 2) {
-    const g = new THREE.BufferGeometry().setFromPoints(measurePts);
-    measureGroup.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xc2502e })));
-    const dist = measurePts[0].distanceTo(measurePts[1]) / SCALE;
-    $('#measureInfo').textContent = `Расстояние: ${dist.toFixed(2)} м`;
-    $('#measureInfo').classList.add('show');
-    measurePts = []; // next click starts a fresh segment (keeps the drawn one)
+// Split the single .dam mesh into per-floor sub-meshes by triangle height so we
+// can show only the selected floor textured and grey out the others (Matterport
+// floor isolation). Shares vertex buffers; just different index subsets.
+//
+// Assignment is by the floor's *slab* height, not the nearest camera level: a
+// sweep camera sits ~1.5 m above its floor, so each floor's slab is at
+// (cameraY - eye). A triangle belongs to the HIGHEST floor whose slab is at or
+// below it — that way the slab + walls of floor f go to f, while f's ceiling
+// (just under floor f+1's slab) also stays with f. Bucketing by nearest camera
+// level instead splits the slab between two floors, so the selected floor's
+// floor looked see-through (half its triangles were greyed out on the level
+// below). This keeps every floor's own floor solid.
+function buildFloorMeshes(srcMesh) {
+  const geom = srcMesh.geometry;
+  const posAttr = geom.attributes.position;
+  if (!geom.index || FLOORS.length <= 1) return false;
+  const idx = geom.index.array;
+  const eye = 1.5 * SCALE;
+  // floor slab height (viewer Y) per floor, ascending (floor 0 = lowest)
+  const base = FLOORS.map((_, f) => {
+    const ys = ROOMS.filter((r) => (r.floor || 0) === f && r.camera).map((r) => r.camera.y * SCALE);
+    const avg = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
+    return avg - eye;
+  });
+  const buckets = FLOORS.map(() => []);
+  floorBounds = FLOORS.map(() => new THREE.Box3());
+  const v = new THREE.Vector3();
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+    const yc = (posAttr.getY(a) + posAttr.getY(b) + posAttr.getY(c)) / 3;
+    let bf = 0;
+    for (let f = 0; f < base.length; f++) { if (yc >= base[f] - 0.06) bf = f; }
+    buckets[bf].push(a, b, c);
+    floorBounds[bf].expandByPoint(v.set(posAttr.getX(a), posAttr.getY(a), posAttr.getZ(a)));
+    floorBounds[bf].expandByPoint(v.set(posAttr.getX(b), posAttr.getY(b), posAttr.getZ(b)));
+    floorBounds[bf].expandByPoint(v.set(posAttr.getX(c), posAttr.getY(c), posAttr.getZ(c)));
   }
+  greyMat.side = srcMesh.material.side;
+  floorMeshes = buckets.map((bk, f) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', posAttr);
+    if (geom.attributes.normal) g.setAttribute('normal', geom.attributes.normal);
+    if (geom.attributes.uv) g.setAttribute('uv', geom.attributes.uv);
+    g.setIndex(bk);
+    const m = new THREE.Mesh(g, srcMesh.material);
+    m.renderOrder = 1;            // draw textured floor over the translucent greys
+    m.userData.floor = f;
+    return m;
+  });
+  return true;
 }
-function handleMeasureClick(ev) {
-  const rect = renderer.domElement.getBoundingClientRect();
-  const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
-  const cy = (ev.touches ? ev.touches[0].clientY : ev.clientY) - rect.top;
-  pointer.x = (cx / rect.width) * 2 - 1;
-  pointer.y = -(cy / rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, activeCam);
+// selected floor = textured + visible; the others are hidden entirely so you
+// can't see (or click "through" to) another level's rooms. This is the standard
+// Matterport single-floor dollhouse view.
+function applyFloorMesh() {
+  if (!floorMeshes.length) return;
+  floorMeshes.forEach((m) => {
+    const on = m.userData.floor === currentFloor;
+    m.visible = on;
+    if (on) m.material = texMat;
+  });
+}
 
-  if (MODE === 'doll' && modelMesh) {
-    const hit = raycaster.intersectObject(modelMesh, true)[0];
-    if (hit) addMeasurePoint(hit.point);
-  } else if (MODE === 'pano') {
-    // Single panorama has no real depth: project onto a 2.5m-radius "wall"
-    // sphere as an approximation (good enough for rough room sizing).
-    const hit = raycaster.intersectObject(panoSphere)[0];
-    if (hit) addMeasurePoint(hit.point.clone().multiplyScalar(2.5 / 500));
-  }
+// Smooth dollhouse-camera move so picking a floor "drops" the view onto that
+// level (lower floor -> camera descends, upper floor -> it rises and the floor
+// sits centred in the scene). Tweened in the render loop via `camTween`.
+const camTween = { active: false, t0: 0, dur: 650, fromPos: new THREE.Vector3(), toPos: new THREE.Vector3(), fromTgt: new THREE.Vector3(), toTgt: new THREE.Vector3() };
+function frameFloor(f, animate = true) {
+  if (!floorBounds[f] || floorBounds[f].isEmpty()) return;
+  const box = floorBounds[f];
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const radius = Math.max(size.x, size.z, size.y) || 4;
+  // keep the current viewing direction (azimuth/elevation), just reframe onto
+  // this floor's centre at a comfortable distance
+  let dir = dollCam.position.clone().sub(orbit.target);
+  if (dir.lengthSq() < 1e-4) dir.set(0.6, 0.7, 0.75);
+  dir.normalize();
+  const dist = radius * 1.6 + 1.5;
+  const toPos = center.clone().add(dir.multiplyScalar(dist));
+  if (!animate) { orbit.target.copy(center); dollCam.position.copy(toPos); dollCam.updateProjectionMatrix(); orbit.update(); return; }
+  camTween.fromPos.copy(dollCam.position); camTween.toPos.copy(toPos);
+  camTween.fromTgt.copy(orbit.target);    camTween.toTgt.copy(center);
+  camTween.t0 = performance.now(); camTween.active = true;
 }
+
+function loadMesh() {
+  if (!META.mesh) { addMarkers(); $('[data-mode="doll"]').disabled = !ROOMS.length; return; }
+  new GLTFLoader().load(BASE + META.mesh, (gltf) => {
+    const model = gltf.scene;
+    // Keep the GLB's single-sided material: the .dam mesh has its normals baked
+    // to face INTO the rooms, so single-sided back-face culling from an orbit
+    // camera removes the near walls/ceiling — the Matterport "dollhouse cutaway"
+    // that lets you look down into the rooms. (DoubleSide would close it back up
+    // into a solid shell — you'd see the outside, not inside.)
+    model.traverse((o) => { if (o.isMesh && !meshObj) meshObj = o; });
+    const box = new THREE.Box3().setFromObject(model);
+    modelBox = box.clone();
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3()).length();
+    orbit.target.copy(center);
+    dollCam.position.copy(center).add(new THREE.Vector3(size * 0.45, size * 0.5, size * 0.55));
+    dollCam.updateProjectionMatrix();
+
+    texMat = meshObj && meshObj.material;
+    if (meshObj && buildFloorMeshes(meshObj)) {
+      // multi-floor: add per-floor sub-meshes and isolate the current floor
+      floorMeshes.forEach((m) => doll.add(m));
+      applyFloorMesh();
+    } else {
+      doll.add(model);            // single floor (or no index): show as-is
+    }
+    meshLoaded = true;
+    addMarkers();
+  }, undefined, () => { console.warn('[tour3d] mesh failed — markers only'); addMarkers(); });
+}
+loadMesh();
 
 // ============================================================================
-// 7. Floorplan (image or auto-generated from room.plan coords)
+// 6. Floor plan (top-down) — auto-laid-out from normalized sweep positions
 // ============================================================================
 const planCanvas = $('#plan');
 const pctx = planCanvas.getContext('2d');
 let planImg = null;
-if (META.floorplan?.image) {
+if (META.floorplan && META.floorplan.image) {
   planImg = new Image();
+  planImg.crossOrigin = 'anonymous';
   planImg.onload = drawPlan;
   planImg.src = BASE + META.floorplan.image;
 }
+
+// Derive the top-down layout from the viewer-space camera positions
+// (screen_x = camera.x, screen_y = camera.z). This is the SAME signed world
+// frame as the dollhouse and the navigation arrows (arrow yaw =
+// atan2(Δcamera.z, Δcamera.x)), so the plan is never mirrored vs. movement.
+// Falls back to any baked room.plan if a camera position is missing.
+const PLAN = {};
+(function buildPlanLayout() {
+  const pts = ROOMS.filter((r) => r.camera).map((r) => ({ id: r.id, x: r.camera.x, y: r.camera.z }));
+  if (!pts.length) return;
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const span = Math.max(maxX - minX, maxY - minY) || 1;
+  pts.forEach((p) => { PLAN[p.id] = { x: 0.12 + 0.76 * (p.x - minX) / span, y: 0.12 + 0.76 * (p.y - minY) / span }; });
+})();
+const planOf = (r) => (r && (PLAN[r.id] || r.plan)) || null;
+
 function drawPlan() {
   const W = planCanvas.width, H = planCanvas.height;
   pctx.clearRect(0, 0, W, H);
-  if (planImg && planImg.complete) {
+  if (planImg && planImg.complete && planImg.naturalWidth) {
     pctx.drawImage(planImg, 0, 0, W, H);
   } else {
-    // Auto schematic: soft background + connections between room dots.
     pctx.fillStyle = 'rgba(255,255,255,0.05)'; pctx.fillRect(0, 0, W, H);
-    pctx.strokeStyle = 'rgba(255,255,255,0.25)'; pctx.lineWidth = 2;
-    ROOMS.forEach((r) => (r.links || []).forEach((l) => {
-      const a = r.plan, b = ROOM_BY_ID[l.to]?.plan;
-      if (a && b) { pctx.beginPath(); pctx.moveTo(a.x * W, a.y * H); pctx.lineTo(b.x * W, b.y * H); pctx.stroke(); }
-    }));
+    pctx.strokeStyle = 'rgba(255,255,255,0.22)'; pctx.lineWidth = 2;
+    ROOMS.forEach((r) => {
+      if (!onCurrentFloor(r)) return;
+      (r.links || []).forEach((l) => {
+        const to = ROOM_BY_ID[l.to];
+        if (!onCurrentFloor(to)) return;
+        const a = planOf(r), b = planOf(to);
+        if (a && b) { pctx.beginPath(); pctx.moveTo(a.x * W, a.y * H); pctx.lineTo(b.x * W, b.y * H); pctx.stroke(); }
+      });
+    });
   }
-  // Room dots
   ROOMS.forEach((r) => {
-    if (!r.plan) return;
-    const x = r.plan.x * W, y = r.plan.y * H;
-    const isCur = r.id === currentRoomId;
-    pctx.beginPath(); pctx.arc(x, y, isCur ? 11 : 8, 0, Math.PI * 2);
-    pctx.fillStyle = isCur ? '#c2502e' : 'rgba(28,24,19,.85)';
+    if (!onCurrentFloor(r)) return;
+    const pl = planOf(r);
+    if (!pl) return;
+    const x = pl.x * W, y = pl.y * H, cur = r.id === currentRoomId;
+    pctx.beginPath(); pctx.arc(x, y, cur ? 11 : 8, 0, Math.PI * 2);
+    pctx.fillStyle = cur ? '#c2502e' : 'rgba(18,21,26,.85)';
     pctx.fill(); pctx.lineWidth = 2; pctx.strokeStyle = '#fff'; pctx.stroke();
     pctx.fillStyle = '#fff'; pctx.font = '600 12px sans-serif'; pctx.textAlign = 'center';
     pctx.fillText(r.name, x, y - 14);
@@ -484,39 +780,189 @@ function drawPlan() {
 planCanvas.addEventListener('click', (e) => {
   const rect = planCanvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
-  let best = null, bestD = 0.06;            // click tolerance (normalized)
+  let best = null, bestD = 0.07;
   ROOMS.forEach((r) => {
-    if (!r.plan) return;
-    const d = Math.hypot(r.plan.x - x, r.plan.y - y);
+    if (!onCurrentFloor(r)) return;
+    const pl = planOf(r);
+    if (!pl) return;
+    const d = Math.hypot(pl.x - x, pl.y - y);
     if (d < bestD) { bestD = d; best = r; }
   });
   if (best) goToRoom(best.id);
 });
 
 // ============================================================================
-// 8. Room navigation
+// 7. Raycaster (used for dollhouse marker clicks)
 // ============================================================================
-let currentRoomId = null;
-function goToRoom(id, { fly = true } = {}) {
-  const room = ROOM_BY_ID[id];
-  if (!room) return;
-  currentRoomId = id;
-  $('#curRoom').textContent = room.name;
-  $('#roomSelect').value = id;
-  loadPanorama(room);
-  buildHotspots(room);
-  if (room.initialYaw != null) {
-    panoView.lon = panoView.targetLon = room.initialYaw;
-    panoView.lat = panoView.targetLat = 0;
-  }
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+// ============================================================================
+// 8. Room navigation + smooth crossfade
+// ============================================================================
+let currentRoomId = null, fading = false;
+
+function setRoomChrome(room) {
+  highlightCard(room.id);
   drawPlan();
-  if (MODE !== 'pano' && fly) setMode('pano');     // selecting a room returns to panorama
+  // shareable deep-link, consistent with /tours/{id}/share (?room=)
+  const url = new URL(location.href);
+  url.searchParams.set('room', room.id);
+  history.replaceState(null, '', url);
 }
 
-// Room dropdown
-const sel = $('#roomSelect');
-ROOMS.forEach((r) => { const o = document.createElement('option'); o.value = r.id; o.textContent = r.name; sel.appendChild(o); });
-sel.addEventListener('change', (e) => goToRoom(e.target.value));
+async function goToRoom(id, opts = {}) {
+  const room = ROOM_BY_ID[id];
+  if (!room || fading) return;
+  const first = currentRoomId === null;
+  const fly = opts.fly !== false;
+
+  // Lock navigation AND remove the old sweep's arrows immediately, so during the
+  // transition there are no stale hotspots to mis-click (no accidental
+  // double-jump) and the previous point's arrows don't linger.
+  if (!first && fly) { fading = true; clearHotspots(); }
+
+  let tex;
+  try { tex = await loadTexture(BASE + room.skybox); }
+  catch (e) { console.warn(e.message); }
+
+  if (first || !fly || !tex) {
+    // immediate set (boot / fallback)
+    if (tex) { sphereBack.material.map = tex; sphereBack.material.needsUpdate = true; }
+    applyHeading(sphereBack, room);
+    sphereBack.material.opacity = 1;
+    fading = false;
+    finishRoom(room, first);
+    return;
+  }
+
+  // Plain, quick crossfade between panoramas — no camera movement, no blur.
+  sphereFront.material.map = tex; sphereFront.material.needsUpdate = true;
+  applyHeading(sphereFront, room);
+  sphereFront.material.opacity = 0;
+  sphereFront.visible = true;
+  fading = true;
+  const t0 = performance.now(), DUR = 300;
+  await new Promise((resolve) => {
+    (function step(now) {
+      const k = Math.min(1, (now - t0) / DUR);
+      sphereFront.material.opacity = k;
+      if (k < 1) requestAnimationFrame(step); else resolve();
+    })(performance.now());
+  });
+  // commit: back sphere adopts the new texture/heading, front hides
+  sphereBack.material.map = tex; sphereBack.material.needsUpdate = true;
+  applyHeading(sphereBack, room);
+  sphereBack.material.opacity = 1;
+  sphereFront.visible = false;
+  sphereFront.material.opacity = 0;
+  fading = false;
+  finishRoom(room, false);
+}
+
+function finishRoom(room, first) {
+  currentRoomId = room.id;
+  // switch the active floor to this room's floor (keeps selector + dollhouse +
+  // plan in sync as you walk between levels)
+  if (FLOORS.length > 1 && (room.floor || 0) !== currentFloor) {
+    setFloor(room.floor || 0);
+  }
+  applyCarouselFloor();
+  buildHotspots(room);
+  // Heading is baked into the sphere, so the camera world-yaw stays continuous
+  // across sweeps (no spin). Only the very first sweep faces a doorway.
+  if (first) { view.yaw = view.targetYaw = room.initialYaw || 0; view.pitch = view.targetPitch = 0; }
+  setRoomChrome(room);
+  if (MODE !== 'pano') setMode('pano');
+  // Warm the neighbour panoramas in the background so the next dissolve starts
+  // instantly with no texture-load stall (which would make it look abrupt).
+  (room.links || []).forEach((l) => {
+    const n = ROOM_BY_ID[l.to];
+    if (n && n.skybox) loadTexture(BASE + n.skybox).catch(() => {});
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Point carousel (bottom): a thumbnail card per capture point. Acts as the
+// current-point indicator + selector (iPod-cover-flow vibe).
+// ----------------------------------------------------------------------------
+const carTrack = $('#carTrack');
+const cardById = {};
+ROOMS.forEach((r) => {
+  const card = document.createElement('div');
+  card.className = 'car-card';
+  card.dataset.id = r.id;
+  const img = document.createElement('img');
+  img.className = 'ph';
+  img.loading = 'lazy';
+  img.alt = r.name || r.id;
+  img.src = BASE + (r.thumb || r.skybox || '');
+  img.onerror = () => { img.style.visibility = 'hidden'; };
+  const nm = document.createElement('div');
+  nm.className = 'nm';
+  nm.textContent = r.name || r.id;
+  card.appendChild(img); card.appendChild(nm);
+  card.addEventListener('click', () => goToRoom(r.id));
+  carTrack.appendChild(card);
+  cardById[r.id] = card;
+});
+// Show only the current floor's points in the bottom carousel (multi-floor),
+// so it lists the points you can actually walk to from here.
+function applyCarouselFloor() {
+  ROOMS.forEach((r) => {
+    const card = cardById[r.id];
+    if (card) card.style.display = (FLOORS.length <= 1 || (r.floor || 0) === currentFloor) ? '' : 'none';
+  });
+}
+function highlightCard(id) {
+  Object.values(cardById).forEach((c) => c.classList.remove('active'));
+  const c = cardById[id];
+  if (c) {
+    c.classList.add('active');
+    c.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Floor selector — a small custom dropdown (multi-floor models only). Selecting
+// a floor isolates it in the dollhouse (textured + clickable points) and greys
+// the others; the floor plan shows only that floor too.
+// ----------------------------------------------------------------------------
+const floorDrop = $('#floorDrop'), floorBtn = $('#floorBtn'), floorMenu = $('#floorMenu'), floorBtnLabel = $('#floorBtnLabel');
+const floorName = (i) => (FLOORS[i] && FLOORS[i].name) || `Floor ${i + 1}`;
+if (FLOORS.length > 1) {
+  floorDrop.style.display = '';
+  FLOORS.forEach((f) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.dataset.floor = f.index; b.textContent = f.name || `Floor ${f.index + 1}`;
+    b.addEventListener('click', () => { selectFloor(f.index); floorDrop.classList.remove('open'); });
+    floorMenu.appendChild(b);
+  });
+  floorBtn.addEventListener('click', (e) => { e.stopPropagation(); floorDrop.classList.toggle('open'); });
+  document.addEventListener('click', () => floorDrop.classList.remove('open'));
+}
+// User picked a floor from the dropdown. In the panorama we can't just isolate a
+// level the user isn't standing on (their arrows would vanish), so we walk them
+// to that floor's first capture point. In dollhouse/plan we just isolate it.
+function selectFloor(idx) {
+  if (idx === currentFloor && MODE === 'pano') return;
+  if (MODE === 'pano') {
+    const dest = ROOMS.find((r) => (r.floor || 0) === idx);
+    if (dest) { goToRoom(dest.id); return; }
+  }
+  setFloor(idx);
+}
+function setFloor(idx) {
+  currentFloor = idx;
+  floorBtnLabel.textContent = floorName(idx);
+  floorMenu.querySelectorAll('button').forEach((b) => b.classList.toggle('active', +b.dataset.floor === idx));
+  applyFloorVisibility();
+  applyFloorMesh();
+  applyCarouselFloor();
+  drawPlan();
+  if (MODE === 'doll') frameFloor(idx, true);
+  if (MODE === 'plan') framePlan(idx);
+}
 
 // ============================================================================
 // 9. Modes
@@ -526,43 +972,50 @@ function setMode(mode) {
   MODE = mode;
   document.querySelectorAll('#modes button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
   const isPano = mode === 'pano', isDoll = mode === 'doll', isPlan = mode === 'plan';
-  panoSphere.visible = isPano || isPlan; // keep pano behind plan too
-  hotspotGroup.visible = isPano;
-  dollGroup.visible = isDoll;
-  dollControls.enabled = isDoll;
-  activeCam = isDoll ? dollCam : panoCam;
-  $('#planWrap').classList.toggle('show', isPlan);
-  $('#tools').style.display = isPlan ? 'none' : 'flex';
-  if (isPlan) drawPlan();
+  // Floor plan = the dollhouse mesh from straight above, so the mesh + markers
+  // are shown for both doll and plan; only the panorama needs the sphere.
+  sphereBack.visible = isPano;
+  sphereFront.visible = false;
+  hotspots.visible = isPano;
+  doll.visible = isDoll || isPlan;
+  orbit.enabled = isDoll;
+  planOrbit.enabled = isPlan;
+  activeCam = isDoll ? dollCam : (isPlan ? planCam : panoCam);
+  setPlanCut(isPlan);
+  if (isDoll && FLOORS.length > 1) frameFloor(currentFloor, false);
+  if (isPlan) framePlan(currentFloor);
 }
-document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+// Toggle the floor-plan section cut: in plan mode the mesh is rendered
+// DOUBLE-SIDED and clipped just above the current floor; otherwise it stays the
+// single-sided dollhouse cutaway. Markers (dots/labels) are never clipped.
+function setPlanCut(on) {
+  doll.traverse((o) => {
+    if (!o.isMesh || !o.material || o.userData.roomId != null) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach((m) => {
+      m.side = on ? THREE.DoubleSide : THREE.FrontSide;
+      m.clippingPlanes = on ? [planClip] : null;
+      m.needsUpdate = true;
+    });
+  });
+}
+document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('click', () => { if (!b.disabled) setMode(b.dataset.mode); }));
 
-// Dollhouse: click a room marker to enter it
+// Dollhouse / floor plan: click a marker to enter that sweep
 renderer.domElement.addEventListener('click', (e) => {
-  if (MEASURE) { handleMeasureClick(e); return; }
-  if (MODE !== 'doll') return;
+  if (MODE !== 'doll' && MODE !== 'plan') return;
+  const cam = MODE === 'doll' ? dollCam : planCam;
   const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, dollCam);
-  const hit = raycaster.intersectObjects(roomMarkers.children, true)[0];
+  pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(pointer, cam);
+  // only the current floor's markers are visible -> only those are clickable
+  const hit = raycaster.intersectObjects(markers.children.filter((m) => m.visible), true)[0];
   if (hit && hit.object.userData.roomId) goToRoom(hit.object.userData.roomId);
 });
 
 // ============================================================================
-// 10. Tools wiring
+// 10. UI hints
 // ============================================================================
-$('#measureBtn').addEventListener('click', () => {
-  MEASURE = !MEASURE;
-  $('#measureBtn').classList.toggle('active', MEASURE);
-  if (!MEASURE) clearMeasure();
-  showHint(MEASURE ? 'Кликайте по точкам — покажу расстояние' : '');
-});
-$('#resetBtn').addEventListener('click', () => {
-  if (MODE === 'pano') { panoCam.fov = 75; panoCam.updateProjectionMatrix(); const r = ROOM_BY_ID[currentRoomId]; panoView.targetLon = r ? (r.initialYaw || 0) : 0; panoView.targetLat = 0; }
-  else if (MODE === 'doll') dollControls.reset();
-});
-
 let hintTimer;
 function showHint(msg) {
   const h = $('#hint');
@@ -571,49 +1024,75 @@ function showHint(msg) {
   clearTimeout(hintTimer); hintTimer = setTimeout(() => h.classList.remove('show'), 3500);
 }
 
-// Pre-load any saved measurements from metadata (drawn in dollhouse space)
-(META.measurements || []).forEach((m) => {
-  if (m.a && m.b) {
-    const a = new THREE.Vector3(m.a.x * SCALE, m.a.y * SCALE, m.a.z * SCALE);
-    const b = new THREE.Vector3(m.b.x * SCALE, m.b.y * SCALE, m.b.z * SCALE);
-    const g = new THREE.BufferGeometry().setFromPoints([a, b]);
-    dollGroup.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x1f5c4d })));
+// ============================================================================
+// 11. Watermark enforcement — persistent, not removable by a casual DOM toggle.
+// ============================================================================
+const WM_ID = 'nestora-watermark';
+function ensureWatermark() {
+  let wm = document.getElementById(WM_ID);
+  if (!wm) {
+    wm = document.createElement('div');
+    wm.id = WM_ID;
+    wm.setAttribute('aria-hidden', 'true');
+    wm.innerHTML = '<svg class="wm-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21 V11 Q12 3 19 11 V21"/><path d="M10 21 V17 Q12 14 14 17 V21"/></svg><span class="wm-text"><b>Nest</b><i>o</i><b>ra</b></span><span class="wm-sub">3D</span>';
+    document.body.appendChild(wm);
   }
-});
+  // force-visible regardless of attempts to hide it
+  wm.style.display = 'flex';
+  wm.style.visibility = 'visible';
+  wm.style.opacity = wm.style.opacity && parseFloat(wm.style.opacity) >= 0.5 ? wm.style.opacity : '1';
+  wm.style.pointerEvents = 'none';
+}
+ensureWatermark();
+new MutationObserver(ensureWatermark).observe(document.body, { childList: true, subtree: true, attributes: true });
+setInterval(ensureWatermark, 1000);
 
 // ============================================================================
-// 11. Resize + render loop
+// 12. Resize + render loop
 // ============================================================================
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   labelRenderer.setSize(innerWidth, innerHeight);
   [panoCam, dollCam].forEach((c) => { c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix(); });
+  if (MODE === 'plan') framePlan(currentFloor);
 });
 
 function animate() {
   requestAnimationFrame(animate);
   if (MODE === 'pano') {
-    // smooth easing toward the target lon/lat
-    panoView.lon += (panoView.targetLon - panoView.lon) * 0.12;
-    panoView.lat += (panoView.targetLat - panoView.lat) * 0.12;
+    // 1:1 with the cursor — no easing, so the view (and the floor arrows that
+    // share this camera) tracks the drag instantly with no lag.
+    view.yaw = view.targetYaw;
+    view.pitch = view.targetPitch;
     aimPano();
-  }
-  if (MODE === 'doll') dollControls.update();
+  } else if (MODE === 'doll') {
+    if (camTween.active) {
+      const k = Math.min(1, (performance.now() - camTween.t0) / camTween.dur);
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;  // easeInOutQuad
+      dollCam.position.lerpVectors(camTween.fromPos, camTween.toPos, e);
+      orbit.target.lerpVectors(camTween.fromTgt, camTween.toTgt, e);
+      if (k >= 1) camTween.active = false;
+    }
+    orbit.update();
+  } else if (MODE === 'plan') planOrbit.update();
   renderer.render(scene, activeCam);
   labelRenderer.render(scene, activeCam);
 }
 
 // ============================================================================
-// 12. Boot
+// 13. Boot
 // ============================================================================
 try {
-  goToRoom(META.startRoom || ROOMS[0]?.id, { fly: false });
+  const start = (DEEP_ROOM && ROOM_BY_ID[DEEP_ROOM]) ? DEEP_ROOM : (META.startRoom || ROOMS[0].id);
+  await goToRoom(start, { fly: false });
   setMode('pano');
   animate();
   loadingEl.classList.add('hide');
-  setTimeout(() => showHint('Перетащите для осмотра • стрелки — переход в комнату'), 600);
+  setTimeout(() => showHint('Drag to look • arrows walk you between points'), 700);
+  // expose a tiny handle for tests / debugging (never used to remove watermark)
+  window.__NESTORA_TOUR__ = { rooms: ROOMS.length, base: BASE, go: goToRoom, mode: () => MODE };
 } catch (e) {
-  fail(e.message || 'Ошибка инициализации');
+  fail((e && e.message) || 'Initialization error');
 }
 </script>
 </body>

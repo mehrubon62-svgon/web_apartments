@@ -1,0 +1,125 @@
+{
+  "data" : {
+    "model" : {
+      "id" : "raFHfCRyNrC",
+      "name" : "Big Student House - 67 Downman Road",
+      "visibility" : "public",
+      "discoverable" : true,
+      "state" : "active",
+      "image" : {
+        "id" : "wD7q8YjwwX4",
+        "label" : "10.30.2021_15.11.54",
+        "classification" : null,
+        "category" : "snapshot",
+        "height" : 1707,
+        "width" : 3034,
+        "created" : "2021-10-30T14:11:55Z",
+        "modified" : "2021-10-30T14:11:55Z",
+        "status" : "available",
+        "filename" : "10302021_151154.jpg",
+        "format" : "image",
+        "url" : "https://cdn-2.matterport.com/apifs/models/raFHfCRyNrC/images/wD7q8YjwwX4/10.30.2021_15.11.54.jpg?t=2-7908c595b38b92773ed48bd9098001b0ab362c8a-1780680644-1",
+        "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+        "type" : "photo2D",
+        "origin" : "user",
+        "validUntil" : "2026-06-05T17:30:44Z",
+        "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/raFHfCRyNrC/images/wD7q8YjwwX4/10.30.2021_15.11.54.jpg?t=2-7908c595b38b92773ed48bd9098001b0ab362c8a-1780680644-1&width=200&height=140&fit=crop&disable=upscale",
+        "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/raFHfCRyNrC/images/wD7q8YjwwX4/10.30.2021_15.11.54.jpg?t=2-7908c595b38b92773ed48bd9098001b0ab362c8a-1780680644-1&width=1920&height=1080&fit=crop&disable=upscale",
+        "snapshotLocation" : {
+          "viewMode" : "panorama",
+          "position" : {
+            "x" : 2.6488192081451416,
+            "y" : 2.131190061569214,
+            "z" : -1.221250295639038
+          },
+          "rotation" : {
+            "x" : -0.7041159133555142,
+            "y" : 0.08760430034276052,
+            "z" : -0.08700131839237053,
+            "w" : 0.6992689308845748
+          },
+          "zoom" : 1.0,
+          "floorVisibility" : [ {
+            "id" : "tsmq1wak12rhgn0mawksxcwcd",
+            "meshId" : 0,
+            "sequence" : 0
+          } ],
+          "anchor" : {
+            "id" : "m8x0eq9706huaem38k714f5zb",
+            "pano" : {
+              "id" : "m8x0eq9706huaem38k714f5zb",
+              "placement" : "auto"
+            }
+          }
+        }
+      },
+      "publication" : {
+        "address" : "Big Student House - 67 Downman Road",
+        "published" : true,
+        "lastPublished" : "2021-10-30T14:17:36Z",
+        "presentedBy" : "Inside Out Property Photography",
+        "summary" : "Student Accommodation Brighton",
+        "description" : "",
+        "externalUrl" : "https://www.insideoutpropertyphotography.co.uk",
+        "contact" : {
+          "name" : "Neil Mcfarlane",
+          "email" : "neil@insideoutpropertyphotography.co.uk",
+          "phoneNumber" : "+4417910752343"
+        }
+      },
+      "options" : {
+        "urlBrandingEnabled" : true,
+        "socialSharingEnabled" : true,
+        "vrEnabled" : true
+      },
+      "assets" : {
+        "meshes" : [ {
+          "id" : "meshes/c07y1k7ir8redcqs5ghe7hsdc",
+          "status" : "available",
+          "filename" : "df54e25d80da4d32bcda5faea3561092.dam",
+          "format" : "dam",
+          "resolution" : "500k",
+          "url" : "https://cdn-2.matterport.com/models/b79b7c9146814178a1130d2424a2dc45/assets/df54e25d80da4d32bcda5faea3561092.dam?t=2-0fc234ae80c9303b9d0a513b558dc4fc88f3a0ad-1780680644-1",
+          "validUntil" : "2026-06-05T17:30:44Z"
+        }, {
+          "id" : "meshes/5h9riq6p5xr2h83sn11y12g2b",
+          "status" : "available",
+          "filename" : "df54e25d80da4d32bcda5faea3561092_50k.dam",
+          "format" : "dam",
+          "resolution" : "50k",
+          "url" : "https://cdn-2.matterport.com/models/b79b7c9146814178a1130d2424a2dc45/assets/df54e25d80da4d32bcda5faea3561092_50k.dam?t=2-972a2f96b3882cd05d45aa0fa74dfd54d92926dd-1780680644-1",
+          "validUntil" : "2026-06-05T17:30:44Z"
+        } ],
+        "textures" : [ {
+          "id" : "50k-high",
+          "status" : "available",
+          "format" : "jpg",
+          "resolution" : "50k",
+          "quality" : "high",
+          "urlTemplate" : "https://cdn-2.matterport.com/models/b79b7c9146814178a1130d2424a2dc45/assets/~/df54e25d80da4d32bcda5faea3561092_50k_texture_jpg_high/df54e25d80da4d32bcda5faea3561092_50k_<texture>.jpg?t=2-81bf60443c3766de047ce16165440c3156e41b33-1780680644-0&k=models%2Fb79b7c9146814178a1130d2424a2dc45%2Fassets",
+          "validUntil" : "2026-06-05T17:30:44Z"
+        }, {
+          "id" : "50k-low",
+          "status" : "available",
+          "format" : "jpg",
+          "resolution" : "50k",
+          "quality" : "low",
+          "urlTemplate" : "https://cdn-2.matterport.com/models/b79b7c9146814178a1130d2424a2dc45/assets/~/df54e25d80da4d32bcda5faea3561092_50k_texture_jpg_low/df54e25d80da4d32bcda5faea3561092_50k_<texture>.jpg?t=2-81bf60443c3766de047ce16165440c3156e41b33-1780680644-0&k=models%2Fb79b7c9146814178a1130d2424a2dc45%2Fassets",
+          "validUntil" : "2026-06-05T17:30:44Z"
+        } ],
+        "tilesets" : [ ]
+      },
+      "lod" : {
+        "options" : [ "lod2" ]
+      },
+      "overlayLayers" : [ ],
+      "baseView" : {
+        "model" : {
+          "id" : "raFHfCRyNrC"
+        }
+      },
+      "defurnishViews" : [ ],
+      "legacyBaseView" : null
+    }
+  }
+}

@@ -14,3 +14,9 @@ numpy
 faker
 psycopg2-binary
 pytest
+
+# 3D tour (Matterport ZIP) conversion: stitch the 6 cube faces of each sweep
+# into one equirectangular panorama and decode the .dam mesh -> .glb.
+# Pinned because the conversion math depends on their stable behaviour.
+Pillow==12.2.0          # decode/encode skybox + texture JPEGs
+py360convert==1.0.4     # cube faces (F,R,B,L,U,D) -> equirectangular (c2e)

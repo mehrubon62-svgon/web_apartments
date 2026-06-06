@@ -1,0 +1,155 @@
+{
+  "data" : {
+    "model" : {
+      "floors" : [ {
+        "id" : "tsmq1wak12rhgn0mawksxcwcd",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "edges" : null
+      }, {
+        "id" : "pd0i1c4yq9w0y2zsb07ed23sb",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "edges" : null
+      } ],
+      "rooms" : [ {
+        "id" : "613htqkzf66zz7hf7n8kzszed",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "cdz3fkt38kae7tapstpt0eaeb",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "xy2x8mpaaqknp7q2c3nnbw1ma",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "tt6gm2a0463x9wmnx7rn6gugc",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "tsmq1wak12rhgn0mawksxcwcd"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "h26t7ky77ew74yb0pg8qqf5rd",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "3m54yff1z7crxaywd8if9rb0d",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "2qdmc5i9byxi79ry1pxdkqzea",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "a5f9age4zzxewres6iqux2emc",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      }, {
+        "id" : "19ab05tns5h6y4qm42esqqpea",
+        "layer" : {
+          "id" : "aaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "floor" : {
+          "id" : "pd0i1c4yq9w0y2zsb07ed23sb"
+        },
+        "classifications" : null,
+        "boundary" : null,
+        "holes" : null,
+        "dimensionEstimates" : null,
+        "ceiling" : null,
+        "label" : null,
+        "keywords" : null
+      } ]
+    }
+  }
+}

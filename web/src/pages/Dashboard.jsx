@@ -196,6 +196,8 @@ function Tour3DUpload({ propertyId }) {
   const L = (ru, en) => (lang === 'ru' ? ru : en);
   const [info, setInfo] = useState(undefined);   // undefined=loading, null=none, obj=present
   const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);             // upload % (0..100)
+  const [phase, setPhase] = useState('');        // '', 'upload', 'process'
   const [drag, setDrag] = useState(false);
   useEffect(() => { api.get3dTour(propertyId).then(setInfo).catch(() => setInfo(null)); }, [propertyId]);
 
@@ -234,15 +236,30 @@ function Tour3DUpload({ propertyId }) {
       return;
     }
     setBusy(true);
+    setPct(0);
+    setPhase('upload');
+    let poll = null;
     try {
       const fd = new FormData(); fd.append('file', file);
-      const res = await api.upload3dTour(propertyId, fd);
+      const res = await api.upload3dTourProgress(propertyId, fd, (p) => {
+        if (p < 100) { setPhase('upload'); setPct(p); return; }
+        // file fully uploaded -> server is converting; poll real conversion %
+        if (!poll) {
+          setPhase('process'); setPct(0);
+          poll = setInterval(async () => {
+            try {
+              const pr = await api.get3dProgress(propertyId);
+              if (pr && typeof pr.pct === 'number') setPct(pr.pct);
+            } catch {}
+          }, 600);
+        }
+      });
       setInfo(res);
       toast(res.metadata_generated
         ? L('3D-тур загружен (metadata.json создан автоматически)', '3D tour uploaded (metadata.json auto-generated)')
         : L('3D-тур загружен', '3D tour uploaded'), 'ok');
     } catch (e) { toast(e.message, 'err'); }
-    finally { setBusy(false); }
+    finally { if (poll) clearInterval(poll); setBusy(false); setPhase(''); setPct(0); }
   }
   async function remove() {
     if (!confirm(L('Удалить 3D-тур?', 'Remove the 3D tour?'))) return;
@@ -268,12 +285,103 @@ function Tour3DUpload({ propertyId }) {
           {has && <a className="btn btn-ghost btn-sm" href={info.viewer_url} target="_blank" rel="noreferrer"><Icon name="globe" /> {L('Открыть', 'Open')}</a>}
           {has && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={remove}><Icon name="trash" /></button>}
           <button type="button" className="btn btn-soft btn-sm" disabled={busy} onClick={pickZip}>
-            {busy ? <span className="spinner-sm" /> : <Icon name="upload" />} {has ? L('Заменить ZIP', 'Replace ZIP') : L('Загрузить ZIP', 'Upload ZIP')}
+            {busy ? <span className="spinner-sm" /> : <Icon name="upload" />}{' '}
+            {busy
+              ? (phase === 'process' ? `${L('Конвертация', 'Converting')} ${pct}%` : `${L('Загрузка', 'Uploading')} ${pct}%`)
+              : (has ? L('Заменить ZIP', 'Replace ZIP') : L('Загрузить ZIP', 'Upload ZIP'))}
           </button>
         </div>
       </div>
+      {busy && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ height: 8, borderRadius: 6, background: 'rgba(0,0,0,.1)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${pct}%`,
+              background: 'var(--brand, #c2502e)',
+              transition: 'width .25s ease',
+              backgroundImage: phase === 'process'
+                ? 'repeating-linear-gradient(45deg, rgba(255,255,255,.25) 0 10px, transparent 10px 20px)'
+                : 'none',
+            }} />
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            {phase === 'process'
+              ? `${L('Конвертация тура', 'Converting tour')}: ${pct}%`
+              : `${L('Загрузка файла', 'Uploading file')}: ${pct}%`}
+          </div>
+        </div>
+      )}
       {has && <div className="tag tag-ok" style={{ marginTop: 10 }}><Icon name="check" /> {L('3D-тур активен', '3D tour active')}</div>}
+      {has && <Tour3DRooms propertyId={propertyId} />}
       {drag && <div className="tour3d-drop-hint">{L('Отпустите файл здесь', 'Drop the file here')}</div>}
+    </div>
+  );
+}
+
+// Owner-only editor: rename the 3D-tour points. Names are written into the
+// tour's metadata.json (PATCH /tours/{id}/3d/rooms) and the viewer shows them.
+function Tour3DRooms({ propertyId }) {
+  const { lang } = useI18n();
+  const toast = useToast();
+  const L = (ru, en) => (lang === 'ru' ? ru : en);
+  const [open, setOpen] = useState(false);
+  const [rooms, setRooms] = useState(null);   // null=loading, []=loaded
+  const [draft, setDraft] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || rooms !== null) return;
+    api.get3dRooms(propertyId)
+      .then((d) => {
+        const list = d.rooms || [];
+        setRooms(list);
+        setDraft(Object.fromEntries(list.map((r) => [r.id, r.name || ''])));
+      })
+      .catch(() => setRooms([]));
+  }, [open, propertyId, rooms]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const res = await api.rename3dRooms(propertyId, draft);
+      setRooms(res.rooms || []);
+      toast(L('Названия точек сохранены', 'Point names saved'), 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+    finally { setBusy(false); }
+  }
+
+  const inputStyle = {
+    flex: 1, background: 'rgba(0,0,0,.04)', border: '1px solid var(--border, rgba(0,0,0,.15))',
+    borderRadius: 8, padding: '7px 10px', font: 'inherit', color: 'inherit',
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen((o) => !o)}>
+        <Icon name="edit" /> {L('Названия точек', 'Point names')} {open ? '▲' : '▾'}
+      </button>
+      {open && (
+        <div className="card card-pad" style={{ marginTop: 8, background: 'var(--surface)' }}>
+          {rooms === null ? <span className="spinner-sm" />
+            : rooms.length === 0 ? <div className="muted" style={{ fontSize: 12.5 }}>{L('Точки не найдены', 'No points found')}</div>
+              : (<>
+                <div style={{ display: 'grid', gap: 8, maxHeight: 320, overflow: 'auto' }}>
+                  {rooms.map((r, i) => (
+                    <div key={r.id} className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <span className="muted" style={{ fontSize: 11, minWidth: 24, textAlign: 'right' }}>{i + 1}.</span>
+                      <input style={inputStyle} value={draft[r.id] ?? ''} maxLength={80}
+                        placeholder={L('Название точки', 'Point name')}
+                        onChange={(e) => setDraft((d) => ({ ...d, [r.id]: e.target.value }))} />
+                    </div>
+                  ))}
+                </div>
+                <div className="row" style={{ gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={save}>
+                    {busy ? <span className="spinner-sm" /> : <Icon name="check" />} {L('Сохранить', 'Save')}
+                  </button>
+                </div>
+              </>)}
+        </div>
+      )}
     </div>
   );
 }

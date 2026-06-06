@@ -1,0 +1,121 @@
+{
+  "data" : {
+    "model" : {
+      "id" : "BxeZPN7PQWL",
+      "name" : "Air BnB Rental - Captured with iPhone",
+      "visibility" : "public",
+      "discoverable" : true,
+      "state" : "active",
+      "image" : {
+        "id" : "wwawnk6PNms",
+        "label" : "Living Room",
+        "classification" : null,
+        "category" : "snapshot",
+        "height" : 1620,
+        "width" : 2880,
+        "created" : "2020-12-17T03:10:03Z",
+        "modified" : "2020-12-17T03:10:03Z",
+        "status" : "available",
+        "filename" : "Living-Room.jpg",
+        "format" : "image",
+        "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/wwawnk6PNms/fgfHd16rste-Living_Room.jpg?t=2-f457c63708a44145fbcb5d27c4220de174f5e085-1780508763-1",
+        "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+        "type" : "photo2D",
+        "origin" : "user",
+        "validUntil" : "2026-06-03T17:46:03Z",
+        "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/wwawnk6PNms/fgfHd16rste-Living_Room.jpg?t=2-f457c63708a44145fbcb5d27c4220de174f5e085-1780508763-1&width=200&height=140&fit=crop&disable=upscale",
+        "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/wwawnk6PNms/fgfHd16rste-Living_Room.jpg?t=2-f457c63708a44145fbcb5d27c4220de174f5e085-1780508763-1&width=1920&height=1080&fit=crop&disable=upscale",
+        "snapshotLocation" : {
+          "viewMode" : "panorama",
+          "position" : {
+            "x" : -2.8666672706604004,
+            "y" : -0.4685670733451843,
+            "z" : 1.4456677436828613
+          },
+          "rotation" : {
+            "x" : 0.6181816110636116,
+            "y" : -0.41305565035034136,
+            "z" : 0.3715417255955447,
+            "w" : -0.556051465993884
+          },
+          "zoom" : 1.0,
+          "floorVisibility" : [ ],
+          "anchor" : {
+            "id" : "f3gxbua24ip7b729x8f55gawa",
+            "pano" : {
+              "id" : "f3gxbua24ip7b729x8f55gawa",
+              "placement" : "auto"
+            }
+          }
+        }
+      },
+      "publication" : {
+        "address" : "1427 E St NE, Washington, DC, 20002, US",
+        "published" : true,
+        "lastPublished" : null,
+        "presentedBy" : "",
+        "summary" : "",
+        "description" : "",
+        "externalUrl" : null,
+        "contact" : {
+          "name" : "",
+          "email" : "",
+          "phoneNumber" : null
+        }
+      },
+      "options" : {
+        "urlBrandingEnabled" : true,
+        "socialSharingEnabled" : true,
+        "vrEnabled" : true
+      },
+      "assets" : {
+        "meshes" : [ {
+          "id" : "meshes/n9i8s2kgu11s44y8p6tca090b",
+          "status" : "available",
+          "filename" : "d58919a247ac4104995f0317c0772e69.dam",
+          "format" : "dam",
+          "resolution" : "500k",
+          "url" : "https://cdn-2.matterport.com/models/8885f156284c47c0b6e49daff3cf2c8b/assets/d58919a247ac4104995f0317c0772e69.dam?t=2-4e308a1ee797e93cdcdcf1041b63ceb38e4b4c61-1780508763-1",
+          "validUntil" : "2026-06-03T17:46:03Z"
+        }, {
+          "id" : "meshes/8r2mu4im4n33mp28nampqk0ed",
+          "status" : "available",
+          "filename" : "d58919a247ac4104995f0317c0772e69_50k.dam",
+          "format" : "dam",
+          "resolution" : "50k",
+          "url" : "https://cdn-2.matterport.com/models/8885f156284c47c0b6e49daff3cf2c8b/assets/d58919a247ac4104995f0317c0772e69_50k.dam?t=2-8ac6f9c016644de1b1f9bef433c39f8876c12740-1780508763-1",
+          "validUntil" : "2026-06-03T17:46:03Z"
+        } ],
+        "textures" : [ {
+          "id" : "50k-high",
+          "status" : "available",
+          "format" : "jpg",
+          "resolution" : "50k",
+          "quality" : "high",
+          "urlTemplate" : "https://cdn-2.matterport.com/models/8885f156284c47c0b6e49daff3cf2c8b/assets/~/d58919a247ac4104995f0317c0772e69_50k_texture_jpg_high/d58919a247ac4104995f0317c0772e69_50k_<texture>.jpg?t=2-721a3442311698922f514be708849dd700a7ab72-1780508763-0&k=models%2F8885f156284c47c0b6e49daff3cf2c8b%2Fassets",
+          "validUntil" : "2026-06-03T17:46:03Z"
+        }, {
+          "id" : "50k-low",
+          "status" : "available",
+          "format" : "jpg",
+          "resolution" : "50k",
+          "quality" : "low",
+          "urlTemplate" : "https://cdn-2.matterport.com/models/8885f156284c47c0b6e49daff3cf2c8b/assets/~/d58919a247ac4104995f0317c0772e69_50k_texture_jpg_low/d58919a247ac4104995f0317c0772e69_50k_<texture>.jpg?t=2-721a3442311698922f514be708849dd700a7ab72-1780508763-0&k=models%2F8885f156284c47c0b6e49daff3cf2c8b%2Fassets",
+          "validUntil" : "2026-06-03T17:46:03Z"
+        } ],
+        "tilesets" : [ ]
+      },
+      "lod" : {
+        "options" : [ "lod2" ]
+      },
+      "overlayLayers" : [ ],
+      "baseView" : {
+        "model" : {
+          "id" : "BxeZPN7PQWL"
+        }
+      },
+      "defurnishViews" : [ ],
+      "legacyBaseView" : null
+    }
+  }
+}

@@ -1,0 +1,667 @@
+{
+  "data" : {
+    "model" : {
+      "id" : "BxeZPN7PQWL",
+      "assets" : {
+        "photos" : [ {
+          "id" : "oKPqheafZL7",
+          "label" : "01.19.2021_12.25.02",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:25:02Z",
+          "modified" : "2021-01-19T20:25:02Z",
+          "status" : "available",
+          "filename" : "01192021_122502.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/oKPqheafZL7/01.19.2021_12.25.02.jpg?t=2-951b9b710d6443f10ac8c3427f5d4d444b16697e-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/oKPqheafZL7/01.19.2021_12.25.02.jpg?t=2-951b9b710d6443f10ac8c3427f5d4d444b16697e-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/oKPqheafZL7/01.19.2021_12.25.02.jpg?t=2-951b9b710d6443f10ac8c3427f5d4d444b16697e-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -13.090705871582031,
+              "y" : 1.5227601528167725,
+              "z" : 1.4520078897476196
+            },
+            "rotation" : {
+              "x" : -0.1912509843084892,
+              "y" : -0.8027950967797706,
+              "z" : 0.5493759099915474,
+              "w" : 0.13087858154928256
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "eq4qdmdts8zgz3m8bn1bc17tb",
+              "pano" : {
+                "id" : "eq4qdmdts8zgz3m8bn1bc17tb",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "vKKpApFG5ME",
+          "label" : "01.19.2021_12.30.01",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:30:01Z",
+          "modified" : "2021-01-19T20:30:01Z",
+          "status" : "available",
+          "filename" : "01192021_123001.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/vKKpApFG5ME/01.19.2021_12.30.01.jpg?t=2-853158564748744dd32c1e9bb84604c412b79531-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/vKKpApFG5ME/01.19.2021_12.30.01.jpg?t=2-853158564748744dd32c1e9bb84604c412b79531-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/vKKpApFG5ME/01.19.2021_12.30.01.jpg?t=2-853158564748744dd32c1e9bb84604c412b79531-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -0.3502931594848633,
+              "y" : -0.3640246093273163,
+              "z" : 1.4516257047653198
+            },
+            "rotation" : {
+              "x" : -0.22081456973753893,
+              "y" : -0.663163499608986,
+              "z" : 0.6785348032058326,
+              "w" : 0.22593277632165287
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "2sncnrw9qd3tw99kq7g062yuc",
+              "pano" : {
+                "id" : "2sncnrw9qd3tw99kq7g062yuc",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "MS3445x54d2",
+          "label" : "Bathroom",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:05Z",
+          "modified" : "2020-12-17T03:10:05Z",
+          "status" : "available",
+          "filename" : "Bathroom.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/MS3445x54d2/M6G3mbUULge-Bathroom.jpg?t=2-f0ae5004bd28a1f8b3c776d568bb1fd061436b7a-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/MS3445x54d2/M6G3mbUULge-Bathroom.jpg?t=2-f0ae5004bd28a1f8b3c776d568bb1fd061436b7a-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/MS3445x54d2/M6G3mbUULge-Bathroom.jpg?t=2-f0ae5004bd28a1f8b3c776d568bb1fd061436b7a-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -8.731467247009277,
+              "y" : 1.775446891784668,
+              "z" : 1.4287923574447632
+            },
+            "rotation" : {
+              "x" : -8.585476091949695E-17,
+              "y" : 0.7933533867854647,
+              "z" : -0.6087613472165143,
+              "w" : 8.585476475477116E-17
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : {
+              "id" : "a4ez597ix0eaigme5651px26a",
+              "pano" : {
+                "id" : "a4ez597ix0eaigme5651px26a",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "PSgS8o4AjMk",
+          "label" : "Bedroom",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:05Z",
+          "modified" : "2020-12-17T03:10:05Z",
+          "status" : "available",
+          "filename" : "Bedroom.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/PSgS8o4AjMk/1ENcjWnLgqk-Bedroom.jpg?t=2-b380d91088df3ac9e6dcbfde59e935992d2da68f-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/PSgS8o4AjMk/1ENcjWnLgqk-Bedroom.jpg?t=2-b380d91088df3ac9e6dcbfde59e935992d2da68f-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/PSgS8o4AjMk/1ENcjWnLgqk-Bedroom.jpg?t=2-b380d91088df3ac9e6dcbfde59e935992d2da68f-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -14.610308647155762,
+              "y" : 0.5387445092201233,
+              "z" : 1.4630517959594727
+            },
+            "rotation" : {
+              "x" : -0.4199155808617352,
+              "y" : 0.6284480587884619,
+              "z" : -0.5444214328456439,
+              "w" : 0.3637708101566711
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : {
+              "id" : "k4q9tq9n81k0uxm7yz7cnr0rb",
+              "pano" : {
+                "id" : "k4q9tq9n81k0uxm7yz7cnr0rb",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "w9uAn5L3mgU",
+          "label" : "Kitchen",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:04Z",
+          "modified" : "2020-12-17T03:10:04Z",
+          "status" : "available",
+          "filename" : "Kitchen.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/w9uAn5L3mgU/QwBiwD3imWk-Kitchen.jpg?t=2-417f1557dd74dc9462af73e94bca605d79b42123-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/w9uAn5L3mgU/QwBiwD3imWk-Kitchen.jpg?t=2-417f1557dd74dc9462af73e94bca605d79b42123-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/w9uAn5L3mgU/QwBiwD3imWk-Kitchen.jpg?t=2-417f1557dd74dc9462af73e94bca605d79b42123-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -0.3502931594848633,
+              "y" : -0.3640246093273163,
+              "z" : 1.4516257047653198
+            },
+            "rotation" : {
+              "x" : 0.4158858907270406,
+              "y" : 0.6224173591328331,
+              "z" : -0.5513060405864624,
+              "w" : -0.36837089877903545
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : {
+              "id" : "2sncnrw9qd3tw99kq7g062yuc",
+              "pano" : {
+                "id" : "2sncnrw9qd3tw99kq7g062yuc",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "XHsT8VvHa5V",
+          "label" : "Kitchen",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:04Z",
+          "modified" : "2020-12-17T03:10:04Z",
+          "status" : "available",
+          "filename" : "Kitchen.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/XHsT8VvHa5V/eCDuAqyuCrE-Kitchen.jpg?t=2-9080908a58fcc621d19943b666b8e175e2b8be19-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/XHsT8VvHa5V/eCDuAqyuCrE-Kitchen.jpg?t=2-9080908a58fcc621d19943b666b8e175e2b8be19-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/XHsT8VvHa5V/eCDuAqyuCrE-Kitchen.jpg?t=2-9080908a58fcc621d19943b666b8e175e2b8be19-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -5.2229413986206055,
+              "y" : 1.6083877086639404,
+              "z" : 1.449987769126892
+            },
+            "rotation" : {
+              "x" : 4.779298587527782E-18,
+              "y" : 0.7450549498397013,
+              "z" : -0.6670031040533563,
+              "w" : 4.7792999317077495E-18
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : {
+              "id" : "7q7g2ed19zirn8s8qr03z3a1b",
+              "pano" : {
+                "id" : "7q7g2ed19zirn8s8qr03z3a1b",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "5fNQngq19WS",
+          "label" : "Dollhouse View",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:06Z",
+          "modified" : "2020-12-17T03:10:06Z",
+          "status" : "available",
+          "filename" : "Dollhouse-View.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/5fNQngq19WS/sMQUcKi3Xfd-Dollhouse_View.jpg?t=2-5070efdf97fe52481ecb64b091ae43ff4b86bfe0-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/5fNQngq19WS/sMQUcKi3Xfd-Dollhouse_View.jpg?t=2-5070efdf97fe52481ecb64b091ae43ff4b86bfe0-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/5fNQngq19WS/sMQUcKi3Xfd-Dollhouse_View.jpg?t=2-5070efdf97fe52481ecb64b091ae43ff4b86bfe0-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "dollhouse",
+            "position" : {
+              "x" : 4.4307451248168945,
+              "y" : -11.6765775680542,
+              "z" : 9.737529754638672
+            },
+            "rotation" : {
+              "x" : 0.8163111051759719,
+              "y" : 0.3069990643180922,
+              "z" : -0.17222903115449636,
+              "w" : -0.4579573286413241
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : null
+          }
+        }, {
+          "id" : "ikTyMMWT5yz",
+          "label" : "01.19.2021_12.23.22",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:23:22Z",
+          "modified" : "2021-01-19T20:23:22Z",
+          "status" : "available",
+          "filename" : "01192021_122322.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/ikTyMMWT5yz/01.19.2021_12.23.22.jpg?t=2-67e77ef5f6a88b31eb35fd62ab4cba90a1536868-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/ikTyMMWT5yz/01.19.2021_12.23.22.jpg?t=2-67e77ef5f6a88b31eb35fd62ab4cba90a1536868-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/ikTyMMWT5yz/01.19.2021_12.23.22.jpg?t=2-67e77ef5f6a88b31eb35fd62ab4cba90a1536868-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -5.2229413986206055,
+              "y" : 1.6083877086639404,
+              "z" : 1.449987769126892
+            },
+            "rotation" : {
+              "x" : -0.008648753869099472,
+              "y" : -0.7874794462813841,
+              "z" : 0.616243063774526,
+              "w" : 0.006768093576656065
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "7q7g2ed19zirn8s8qr03z3a1b",
+              "pano" : {
+                "id" : "7q7g2ed19zirn8s8qr03z3a1b",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "v2rgKjUVEXr",
+          "label" : "01.19.2021_12.23.36",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:23:36Z",
+          "modified" : "2021-01-19T20:23:36Z",
+          "status" : "available",
+          "filename" : "01192021_122336.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/v2rgKjUVEXr/01.19.2021_12.23.36.jpg?t=2-993e363f5f4cd7d7b2f79f0e98cf586c967b2281-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/v2rgKjUVEXr/01.19.2021_12.23.36.jpg?t=2-993e363f5f4cd7d7b2f79f0e98cf586c967b2281-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/v2rgKjUVEXr/01.19.2021_12.23.36.jpg?t=2-993e363f5f4cd7d7b2f79f0e98cf586c967b2281-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -8.731467247009277,
+              "y" : 1.775446891784668,
+              "z" : 1.4287923574447632
+            },
+            "rotation" : {
+              "x" : -0.04070695909121382,
+              "y" : -0.7436262696260646,
+              "z" : 0.6663575092113488,
+              "w" : 0.036477178087360375
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "a4ez597ix0eaigme5651px26a",
+              "pano" : {
+                "id" : "a4ez597ix0eaigme5651px26a",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "wwawnk6PNms",
+          "label" : "Living Room",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:03Z",
+          "modified" : "2020-12-17T03:10:03Z",
+          "status" : "available",
+          "filename" : "Living-Room.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/wwawnk6PNms/fgfHd16rste-Living_Room.jpg?t=2-ea0f9485b7e390960daad50c6e859edb8abcbc85-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/wwawnk6PNms/fgfHd16rste-Living_Room.jpg?t=2-ea0f9485b7e390960daad50c6e859edb8abcbc85-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/wwawnk6PNms/fgfHd16rste-Living_Room.jpg?t=2-ea0f9485b7e390960daad50c6e859edb8abcbc85-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -2.8666672706604004,
+              "y" : -0.4685670733451843,
+              "z" : 1.4456677436828613
+            },
+            "rotation" : {
+              "x" : 0.6181816110636116,
+              "y" : -0.41305565035034136,
+              "z" : 0.3715417255955447,
+              "w" : -0.556051465993884
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : {
+              "id" : "f3gxbua24ip7b729x8f55gawa",
+              "pano" : {
+                "id" : "f3gxbua24ip7b729x8f55gawa",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "JYwKxz8NUyq",
+          "label" : "Bedroom",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1620,
+          "width" : 2880,
+          "created" : "2020-12-17T03:10:05Z",
+          "modified" : "2020-12-17T03:10:05Z",
+          "status" : "available",
+          "filename" : "Bedroom.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/JYwKxz8NUyq/KPnJrwG9SLh-Bedroom.jpg?t=2-8eb3f1fae959600b03a816fce814c547f7b08b51-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/JYwKxz8NUyq/KPnJrwG9SLh-Bedroom.jpg?t=2-8eb3f1fae959600b03a816fce814c547f7b08b51-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/JYwKxz8NUyq/KPnJrwG9SLh-Bedroom.jpg?t=2-8eb3f1fae959600b03a816fce814c547f7b08b51-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -13.090705871582031,
+              "y" : 1.5227601528167725,
+              "z" : 1.4520078897476196
+            },
+            "rotation" : {
+              "x" : 0.28544566963251317,
+              "y" : 0.6891267776784625,
+              "z" : -0.6153517054357486,
+              "w" : -0.2548870103729409
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ ],
+            "anchor" : {
+              "id" : "eq4qdmdts8zgz3m8bn1bc17tb",
+              "pano" : {
+                "id" : "eq4qdmdts8zgz3m8bn1bc17tb",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "UYsSoaUtYbx",
+          "label" : "01.19.2021_12.23.44",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:23:45Z",
+          "modified" : "2021-01-19T20:23:45Z",
+          "status" : "available",
+          "filename" : "01192021_122344.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/UYsSoaUtYbx/01.19.2021_12.23.44.jpg?t=2-487a4bb6771a567f985b2a5677d6d6cdcb725253-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/UYsSoaUtYbx/01.19.2021_12.23.44.jpg?t=2-487a4bb6771a567f985b2a5677d6d6cdcb725253-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/UYsSoaUtYbx/01.19.2021_12.23.44.jpg?t=2-487a4bb6771a567f985b2a5677d6d6cdcb725253-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -10.936347961425781,
+              "y" : 1.8082035779953003,
+              "z" : 1.4725514650344849
+            },
+            "rotation" : {
+              "x" : -0.028427083248092053,
+              "y" : -0.7607368611068057,
+              "z" : 0.6479853553610566,
+              "w" : 0.024213804512631644
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "9q8ntaud1xqubp10r4nf99qab",
+              "pano" : {
+                "id" : "9q8ntaud1xqubp10r4nf99qab",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "cBaLc5adCKG",
+          "label" : "01.19.2021_12.23.57",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:23:58Z",
+          "modified" : "2021-01-19T20:23:58Z",
+          "status" : "available",
+          "filename" : "01192021_122357.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/cBaLc5adCKG/01.19.2021_12.23.57.jpg?t=2-29ec26ed99b061c07bbc7806e0453b236c3121ad-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/cBaLc5adCKG/01.19.2021_12.23.57.jpg?t=2-29ec26ed99b061c07bbc7806e0453b236c3121ad-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/cBaLc5adCKG/01.19.2021_12.23.57.jpg?t=2-29ec26ed99b061c07bbc7806e0453b236c3121ad-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -13.090705871582031,
+              "y" : 1.5227601528167725,
+              "z" : 1.4520078897476196
+            },
+            "rotation" : {
+              "x" : -0.19125098430848944,
+              "y" : -0.8027950967797706,
+              "z" : 0.5493759099915474,
+              "w" : 0.13087858154928236
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "eq4qdmdts8zgz3m8bn1bc17tb",
+              "pano" : {
+                "id" : "eq4qdmdts8zgz3m8bn1bc17tb",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "xpv7j3rGKhf",
+          "label" : "01.19.2021_12.23.06",
+          "classification" : null,
+          "category" : "tour",
+          "height" : 427,
+          "width" : 759,
+          "created" : "2021-01-19T20:23:07Z",
+          "modified" : "2021-01-19T20:23:07Z",
+          "status" : "available",
+          "filename" : "01192021_122306.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/xpv7j3rGKhf/01.19.2021_12.23.06.jpg?t=2-5e0b90ba14458a08d7d3100ef2008b60b01f7946-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/xpv7j3rGKhf/01.19.2021_12.23.06.jpg?t=2-5e0b90ba14458a08d7d3100ef2008b60b01f7946-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/xpv7j3rGKhf/01.19.2021_12.23.06.jpg?t=2-5e0b90ba14458a08d7d3100ef2008b60b01f7946-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -0.3502931594848633,
+              "y" : -0.3640246093273163,
+              "z" : 1.4516257047653198
+            },
+            "rotation" : {
+              "x" : 0.22081456973753893,
+              "y" : 0.6631634996089861,
+              "z" : -0.6785348032058327,
+              "w" : -0.22593277632165287
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "2sncnrw9qd3tw99kq7g062yuc",
+              "pano" : {
+                "id" : "2sncnrw9qd3tw99kq7g062yuc",
+                "placement" : "auto"
+              }
+            }
+          }
+        }, {
+          "id" : "QtUzxDit5LD",
+          "label" : "12.17.2020_18.07.39",
+          "classification" : null,
+          "category" : "snapshot",
+          "height" : 1707,
+          "width" : 3034,
+          "created" : "2020-12-18T02:07:39Z",
+          "modified" : "2020-12-18T02:07:39Z",
+          "status" : "available",
+          "filename" : "12172020_180739.jpg",
+          "format" : "image",
+          "url" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/QtUzxDit5LD/12.17.2020_18.07.39.jpg?t=2-3fcde0bf2d49d28a69a74ad164c24e446f46281a-1780508764-1",
+          "resolutions" : [ "icon", "thumbnail", "preview", "web", "presentation", "original" ],
+          "type" : "photo2D",
+          "origin" : "user",
+          "validUntil":"2099-01-01T17:46:04Z",
+          "thumbnailUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/QtUzxDit5LD/12.17.2020_18.07.39.jpg?t=2-3fcde0bf2d49d28a69a74ad164c24e446f46281a-1780508764-1&width=200&height=140&fit=crop&disable=upscale",
+          "presentationUrl" : "https://cdn-2.matterport.com/apifs/models/BxeZPN7PQWL/images/QtUzxDit5LD/12.17.2020_18.07.39.jpg?t=2-3fcde0bf2d49d28a69a74ad164c24e446f46281a-1780508764-1&width=1920&height=1080&fit=crop&disable=upscale",
+          "snapshotLocation" : {
+            "viewMode" : "panorama",
+            "position" : {
+              "x" : -0.3502931594848633,
+              "y" : -0.3640246093273163,
+              "z" : 1.4516257047653198
+            },
+            "rotation" : {
+              "x" : -0.5701740373672607,
+              "y" : -0.554036646059986,
+              "z" : 0.42271968588107484,
+              "w" : 0.4350322161674066
+            },
+            "zoom" : 1.0,
+            "floorVisibility" : [ {
+              "id" : "tsmq1wak12rhgn0mawksxcwcd",
+              "meshId" : 0,
+              "sequence" : 0
+            } ],
+            "anchor" : {
+              "id" : "2sncnrw9qd3tw99kq7g062yuc",
+              "pano" : {
+                "id" : "2sncnrw9qd3tw99kq7g062yuc",
+                "placement" : "auto"
+              }
+            }
+          }
+        } ]
+      },
+      "defurnishedViews" : [ ]
+    }
+  }
+}

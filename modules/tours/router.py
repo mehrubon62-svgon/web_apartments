@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from models import get_db, User, Property, Tour, PropertyStatus
-from dependencies import get_current_user, require_seller
+from dependencies import get_current_user, require_seller, get_optional_user
 from config import AI_APP_URL, MEDIA_DIR
-from modules.tours.schemas import TourIn, TourOut, ShareResponse
+from modules.tours.schemas import TourIn, TourOut, ShareResponse, Tour3DRoomNames
 
 
 router = APIRouter(prefix="/tours", tags=["360 Tours"])
@@ -170,13 +171,20 @@ def share_room(
 # ============================================================================
 import io
 import json
+import logging
 import zipfile
 from pathlib import Path
 
+_tours_log = logging.getLogger("nestora.tours")
+
 # Where extracted 3D tours live, and the public URL prefix that serves them.
 _TOURS3D_DIRNAME = "tours3d"
-_MAX_ZIP_MB = 200
+_MAX_ZIP_MB = 4096  # 4 GB — Matterport dumps can be very large (full-res panos + mesh)
 _ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".json", ".glb", ".gltf", ".bin", ".hdr", ".ktx2"}
+
+# In-memory conversion progress per property, polled by the upload UI.
+# {property_id: {"stage": "upload|convert|done|error", "pct": int}}
+_3d_progress: dict[int, dict] = {}
 
 
 def _tour3d_dir(property_id: int) -> Path:
@@ -283,120 +291,183 @@ async def upload_3d_tour(
     if prop.seller_id != seller.id and seller.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not your listing")
 
-    raw = await file.read()
-    if len(raw) > _MAX_ZIP_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"ZIP exceeds {_MAX_ZIP_MB} MB")
+    _tours_log.info("3D upload START: property=%s filename=%s content_type=%s",
+                    property_id, file.filename, file.content_type)
+
+    # Stream the upload to a temp file on disk (1 MB chunks) so a large ZIP —
+    # up to _MAX_ZIP_MB (4 GB) — is never held entirely in RAM. The size cap is
+    # enforced while streaming, and zipfile reads members lazily from the file.
+    import os, tempfile, shutil
+    limit = _MAX_ZIP_MB * 1024 * 1024
+    tmp = tempfile.NamedTemporaryFile(prefix="tour3d_", suffix=".zip", delete=False)
+    zf = None
     try:
-        zf = zipfile.ZipFile(io.BytesIO(raw))
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="Not a valid ZIP archive")
+        size = 0
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > limit:
+                raise HTTPException(status_code=400, detail=f"ZIP exceeds {_MAX_ZIP_MB} MB")
+            tmp.write(chunk)
+        tmp.close()
+        _tours_log.info("3D upload received %.1f MB -> %s", size / 1048576, tmp.name)
 
-    members = _safe_members(zf)
-    if not members:
-        raise HTTPException(status_code=400, detail="ZIP has no usable files")
-
-    dest = _tour3d_dir(property_id)
-    # wipe any previous upload for this property
-    if dest.exists():
-        import shutil
-        shutil.rmtree(dest, ignore_errors=True)
-    dest.mkdir(parents=True, exist_ok=True)
-
-    # ---- Matterport showcase dump? Convert cube skyboxes -> equirectangular. ----
-    from modules.tours.matterport import is_matterport_dump, convert as convert_matterport
-    all_names = [m.filename.replace("\\", "/") for m in members]
-    if is_matterport_dump(all_names):
         try:
-            convert_matterport(zf, dest)
-        except Exception as exc:  # fall back to raw extract if conversion fails
-            import shutil
+            zf = zipfile.ZipFile(tmp.name)
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Not a valid ZIP archive")
+
+        members = _safe_members(zf)
+        if not members:
+            raise HTTPException(status_code=400, detail="ZIP has no usable files")
+
+        dest = _tour3d_dir(property_id)
+        # wipe any previous upload for this property
+        if dest.exists():
             shutil.rmtree(dest, ignore_errors=True)
-            dest.mkdir(parents=True, exist_ok=True)
-            raise HTTPException(status_code=400, detail=f"Matterport conversion failed: {exc}")
+        dest.mkdir(parents=True, exist_ok=True)
+
+        # ---- Matterport showcase dump? Convert cube skyboxes -> equirectangular. ----
+        from modules.tours.matterport import is_matterport_dump, convert as convert_matterport, extract_model_id
+        all_names = [m.filename.replace("\\", "/") for m in members]
+        if is_matterport_dump(all_names):
+            # Pull the public Matterport model ID so we can embed the official
+            # Matterport player (its native 3D / dollhouse / floor-plan / movement).
+            model_id = extract_model_id(zf, all_names)
+            _tours_log.info("3D upload: matterport dump (%s members), converting…", len(members))
+            _3d_progress[property_id] = {"stage": "convert", "pct": 1}
+
+            def _on_progress(done, total):
+                _3d_progress[property_id] = {
+                    "stage": "convert",
+                    "pct": int(done / total * 100) if total else 0,
+                }
+            try:
+                await run_in_threadpool(convert_matterport, zf, dest, _on_progress)
+            except Exception as exc:  # fall back to clean state if conversion fails
+                shutil.rmtree(dest, ignore_errors=True)
+                dest.mkdir(parents=True, exist_ok=True)
+                _3d_progress[property_id] = {"stage": "error", "pct": 0}
+                _tours_log.exception("3D upload: matterport conversion failed")
+                raise HTTPException(status_code=400, detail=f"Matterport conversion failed: {exc}")
+            _3d_progress[property_id] = {"stage": "done", "pct": 100}
+            _tours_log.info("3D upload: conversion done for property=%s", property_id)
+            base_url = _tour3d_base_url(property_id)
+            tour = db.query(Tour).filter(Tour.property_id == property_id).first()
+            wrapper = dict(tour.rooms) if (tour and isinstance(tour.rooms, dict)) else \
+                ({"rooms": tour.rooms} if (tour and isinstance(tour.rooms, list)) else {})
+            wrapper["model3d"] = {
+                "base": base_url, "metadata_generated": True, "source": "matterport",
+                "matterport_id": model_id,
+            }
+            if tour:
+                tour.rooms = wrapper
+            else:
+                tour = Tour(property_id=property_id, rooms=wrapper)
+                db.add(tour)
+            db.commit()
+            return JSONResponse({
+                "ok": True, "base": base_url,
+                "viewer_url": f"/tour3d.html?base={base_url}",
+                "metadata_generated": True, "source": "matterport",
+                "matterport_id": model_id,
+            })
+
+        # Detect a common top-level folder to strip (Matterport exports often nest).
+        names = all_names
+        tops = {n.split("/")[0] for n in names if "/" in n}
+        strip = ""
+        if len(tops) == 1 and not any("/" not in n for n in names):
+            strip = next(iter(tops)) + "/"
+
+        for info in members:
+            name = info.filename.replace("\\", "/")
+            rel = name[len(strip):] if strip and name.startswith(strip) else name
+            if not rel:
+                continue
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, target.open("wb") as out:
+                shutil.copyfileobj(src, out, 1024 * 1024)
+
+        # Ensure metadata.json exists.
+        meta_path = dest / "metadata.json"
+        if not meta_path.exists():
+            meta = _generate_metadata(dest)
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            generated = True
+        else:
+            generated = False
+
         base_url = _tour3d_base_url(property_id)
+
+        # Persist a marker in the tour record (reuse the rooms JSON wrapper).
+        # NOTE: build a NEW dict — SQLAlchemy won't detect in-place mutation of a
+        # JSON column, so reassigning the same object reference wouldn't save.
         tour = db.query(Tour).filter(Tour.property_id == property_id).first()
-        wrapper = dict(tour.rooms) if (tour and isinstance(tour.rooms, dict)) else \
-            ({"rooms": tour.rooms} if (tour and isinstance(tour.rooms, list)) else {})
-        wrapper["model3d"] = {"base": base_url, "metadata_generated": True, "source": "matterport"}
+        if tour and isinstance(tour.rooms, dict):
+            wrapper = dict(tour.rooms)
+        elif tour and isinstance(tour.rooms, list):
+            wrapper = {"rooms": tour.rooms}
+        else:
+            wrapper = {}
+        wrapper["model3d"] = {"base": base_url, "metadata_generated": generated}
         if tour:
             tour.rooms = wrapper
         else:
             tour = Tour(property_id=property_id, rooms=wrapper)
             db.add(tour)
         db.commit()
+
         return JSONResponse({
-            "ok": True, "base": base_url,
+            "ok": True,
+            "base": base_url,
             "viewer_url": f"/tour3d.html?base={base_url}",
-            "metadata_generated": True, "source": "matterport",
+            "metadata_generated": generated,
+            "files": len(members),
         })
-
-    # Detect a common top-level folder to strip (Matterport exports often nest).
-    names = all_names
-    tops = {n.split("/")[0] for n in names if "/" in n}
-    strip = ""
-    if len(tops) == 1 and not any("/" not in n for n in names):
-        strip = next(iter(tops)) + "/"
-
-    for info in members:
-        name = info.filename.replace("\\", "/")
-        rel = name[len(strip):] if strip and name.startswith(strip) else name
-        if not rel:
-            continue
-        target = dest / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with zf.open(info) as src, target.open("wb") as out:
-            out.write(src.read())
-
-    # Ensure metadata.json exists.
-    meta_path = dest / "metadata.json"
-    if not meta_path.exists():
-        meta = _generate_metadata(dest)
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        generated = True
-    else:
-        generated = False
-
-    base_url = _tour3d_base_url(property_id)
-
-    # Persist a marker in the tour record (reuse the rooms JSON wrapper).
-    # NOTE: build a NEW dict — SQLAlchemy won't detect in-place mutation of a
-    # JSON column, so reassigning the same object reference wouldn't save.
-    tour = db.query(Tour).filter(Tour.property_id == property_id).first()
-    if tour and isinstance(tour.rooms, dict):
-        wrapper = dict(tour.rooms)
-    elif tour and isinstance(tour.rooms, list):
-        wrapper = {"rooms": tour.rooms}
-    else:
-        wrapper = {}
-    wrapper["model3d"] = {"base": base_url, "metadata_generated": generated}
-    if tour:
-        tour.rooms = wrapper
-    else:
-        tour = Tour(property_id=property_id, rooms=wrapper)
-        db.add(tour)
-    db.commit()
-
-    return JSONResponse({
-        "ok": True,
-        "base": base_url,
-        "viewer_url": f"/tour3d.html?base={base_url}",
-        "metadata_generated": generated,
-        "files": len(members),
-    })
+    finally:
+        if zf is not None:
+            try: zf.close()
+            except Exception: pass
+        try: tmp.close()
+        except Exception: pass
+        try: os.unlink(tmp.name)
+        except OSError: pass
 
 
 @router.get("/{property_id}/3d")
 def get_3d_tour(
     property_id: int,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
-    """Return the 3D-tour info (base folder + viewer URL) if one was uploaded."""
+    """Return the 3D-tour info (base folder + viewer URL) if one was uploaded.
+
+    If a Matterport model ID was recovered from the upload, `matterport_id` is
+    returned so the frontend can embed the official Matterport player.
+    """
     tour = db.query(Tour).filter(Tour.property_id == property_id).first()
     if not _has_3d(tour):
         raise HTTPException(status_code=404, detail="No 3D tour for this property")
-    base = tour.rooms["model3d"]["base"]
-    return {"base": base, "viewer_url": f"/tour3d.html?base={base}"}
+    model = tour.rooms["model3d"]
+    base = model["base"]
+    return {
+        "base": base,
+        "viewer_url": f"/tour3d.html?base={base}",
+        "matterport_id": model.get("matterport_id"),
+    }
+
+
+@router.get("/{property_id}/3d/progress")
+def get_3d_progress(
+    property_id: int,
+    current_user: User | None = Depends(get_optional_user),
+):
+    """Conversion progress for an in-flight 3D-tour upload (polled by the UI)."""
+    return _3d_progress.get(property_id, {"stage": "idle", "pct": 0})
 
 
 @router.delete("/{property_id}/3d")
@@ -418,3 +489,60 @@ def delete_3d_tour(
         tour.rooms = w
         db.commit()
     return {"detail": "3D tour removed"}
+
+
+def _read_meta(property_id: int) -> tuple[Path, dict]:
+    """Load the 3D tour's metadata.json; raise 404 if it isn't there."""
+    meta_path = _tour3d_dir(property_id) / "metadata.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="No 3D tour for this property")
+    try:
+        return meta_path, json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Tour metadata is unreadable")
+
+
+@router.get("/{property_id}/3d/rooms")
+def list_3d_rooms(
+    property_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
+    """List the 3D-tour points (id + current name) so the owner can rename them."""
+    _, meta = _read_meta(property_id)
+    rooms = [{"id": r.get("id"), "name": r.get("name", "")} for r in meta.get("rooms", []) if r.get("id")]
+    return {"rooms": rooms}
+
+
+@router.patch("/{property_id}/3d/rooms")
+def rename_3d_rooms(
+    property_id: int,
+    data: Tour3DRoomNames,
+    db: Session = Depends(get_db),
+    seller: User = Depends(require_seller),
+):
+    """Rename 3D-tour points (seller/owner only). Body: {"names": {room_id: name}}.
+
+    Writes the new names straight into the tour's metadata.json so the viewer
+    picks them up on next load. Unknown ids are ignored; blank names are skipped.
+    """
+    prop = _get_property(db, property_id)
+    if prop.seller_id != seller.id and seller.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not your listing")
+
+    meta_path, meta = _read_meta(property_id)
+    names = data.names
+    changed = 0
+    for room in meta.get("rooms", []):
+        rid = room.get("id")
+        if rid in names:
+            room["name"] = names[rid]
+            changed += 1
+    # Write atomically: a NEW string to a temp file, then replace, so a crash
+    # mid-write can't corrupt the live metadata.json.
+    tmp = meta_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(meta_path)
+
+    rooms = [{"id": r.get("id"), "name": r.get("name", "")} for r in meta.get("rooms", []) if r.get("id")]
+    return {"ok": True, "updated": changed, "rooms": rooms}
