@@ -65,7 +65,6 @@ def compute_recommendations(db: Session, user_id: int, limit: int = 10, shuffle:
         .all()
     )
     if not profile:
-        # Cold start: sample from the most-viewed pool so refreshes vary.
         ranked = sorted(candidates, key=lambda p: p.views_count or 0, reverse=True)
         pool = ranked[: max(limit * 3, 12)]
         if shuffle and len(pool) > limit:
@@ -90,13 +89,10 @@ def compute_recommendations(db: Session, user_id: int, limit: int = 10, shuffle:
     if not shuffle:
         return [p.id for p in ranked[:limit]]
 
-    # Keep relevance but rotate picks on each refresh: take a high-scoring pool
-    # (~3x the limit) and weighted-sample from it so good matches surface more
-    # often but the exact set differs between page loads.
     pool = ranked[: max(limit * 3, limit + 6)]
     if len(pool) <= limit:
         return [p.id for p in pool]
-    weights = [score(p) + 0.5 for p in pool]  # +0.5 so nothing has zero chance
+    weights = [score(p) + 0.5 for p in pool]
     chosen: list[int] = []
     items = list(zip(pool, weights))
     while items and len(chosen) < limit:
@@ -244,7 +240,6 @@ def _parse_rerank(raw: str, valid_ids: set[int]) -> dict | None:
             continue
         if i in valid_ids and i not in order:
             order.append(i)
-    # Append any candidates the model dropped, preserving original order.
     for i in valid_ids:
         if i not in order:
             order.append(i)

@@ -13,7 +13,7 @@ export function MapPage() {
   const [list, setList] = useState([]);
   const [count, setCount] = useState(0);
   const [filters, setFilters] = useState({ deal_type: '', type: '' });
-  const [poi, setPoi] = useState({ metro: true, school: true, shop: true });
+  const [poi, setPoi] = useState({ school: true, shop: true });
   const poiMarkers = useRef([]);
   const [hasMap, setHasMap] = useState(true);
   const [heat, setHeat] = useState(false);
@@ -126,11 +126,11 @@ export function MapPage() {
     poiMarkers.current.forEach((o) => o.remove()); poiMarkers.current = [];
     try {
       const pois = await api.infrastructure();
-      const icons = { metro: 'train', school: 'book', shop: 'cart' };
-      const labels = { metro: 'Метро', school: 'Школа', shop: 'Магазин' };
-      const svg = { train: '<rect x="6" y="4" width="12" height="13" rx="3"/><path d="M6 11h12M9 21l-2 2M15 21l2 2"/>', book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M5 16h13"/>', cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/><path d="M3 4h2l2.5 12h10l2-8H6"/>' };
+      const icons = { school: 'book', shop: 'cart' };
+      const labels = { school: 'Школа', shop: 'Магазин' };
+      const svg = { book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M5 16h13"/>', cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/><path d="M3 4h2l2.5 12h10l2-8H6"/>' };
       pois.forEach((p) => {
-        if (!poi[p.kind]) return;
+        if (p.kind === 'metro' || !poi[p.kind]) return;
         const el = document.createElement('div');
         el.className = `marker-poi poi-${p.kind}`;
         el.innerHTML = `<span class="icn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svg[icons[p.kind]] || ''}</svg></span>`;
@@ -194,7 +194,7 @@ export function MapPage() {
       </div>
       <div className="map-overlay-controls">
         <div className="map-legend-title">Слои на карте</div>
-        {[['metro', 'train', 'Метро'], ['school', 'book', 'Школы'], ['shop', 'cart', 'Магазины']].map(([k, ic, lbl]) => (
+        {[['school', 'book', 'Школы'], ['shop', 'cart', 'Магазины']].map(([k, ic, lbl]) => (
           <button key={k} className={`poi-toggle ${poi[k] ? 'active' : ''}`} onClick={() => setPoi((s) => ({ ...s, [k]: !s[k] }))}><Icon name={ic} /><span>{lbl}</span></button>
         ))}
         <div className="map-legend-title" style={{ marginTop: 10 }}>Тепловая карта цен</div>

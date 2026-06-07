@@ -20,7 +20,6 @@ from config import REDIS_URL, AI_RATE_LIMIT, AI_RATE_WINDOW_SEC
 from models import User
 from dependencies import get_current_user
 
-# In-process fallback store: {key: (count, reset_epoch)}
 _local: dict[str, tuple[int, float]] = {}
 
 

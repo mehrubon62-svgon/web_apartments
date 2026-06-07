@@ -5,7 +5,7 @@ def test_create_listing_requires_seller(client, buyer):
         json={"title": "X", "type": "apartment", "deal_type": "sale",
               "price": 100000, "area": 40, "media": []},
     )
-    assert r.status_code == 403  # buyers can't create listings
+    assert r.status_code == 403
 
 
 def test_listing_appears_in_catalog(client, buyer, listing):
@@ -19,7 +19,7 @@ def test_filters_price(client, buyer, listing):
     r = client.get("/properties", headers=buyer["headers"], params={"max_price": 100})
     assert r.status_code == 200
     ids = [p["id"] for p in r.json()["items"]]
-    assert listing["id"] not in ids  # 250k listing excluded by max_price=100
+    assert listing["id"] not in ids
 
 
 def test_map_marker_present(client, buyer, listing):

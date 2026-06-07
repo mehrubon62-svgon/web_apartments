@@ -19,8 +19,6 @@ from fastapi import WebSocket
 
 from config import REDIS_URL
 
-# All realtime events are published to this single channel as JSON:
-#   {"user_id": <int>, "event": "<name>", "data": {...}}
 CHANNEL = "realtime:events"
 
 

@@ -21,10 +21,8 @@ VALID_VERDICTS = {
 }
 VALID_RISK = {"low", "medium", "high", "unknown"}
 
-# Small in-process cache so re-opening the AI tab doesn't re-call the LLM.
-# Keyed by (property_id, price, lang); invalidated when the price changes.
 _REVIEW_CACHE: dict[tuple, tuple[float, dict]] = {}
-_REVIEW_TTL = 1800.0  # 30 min
+_REVIEW_TTL = 1800.0
 
 
 def review_property(db: Session, prop: Property, lang: str = "en") -> dict:
@@ -34,7 +32,6 @@ def review_property(db: Session, prop: Property, lang: str = "en") -> dict:
     if cached and (time.time() - cached[0]) < _REVIEW_TTL:
         return cached[1]
     result = _compute_review(db, prop, lang)
-    # Only cache successful AI results (keep retrying heuristic fallbacks cheaply).
     if result.get("ai_used"):
         _REVIEW_CACHE[key] = (time.time(), result)
         if len(_REVIEW_CACHE) > 500:
@@ -93,7 +90,6 @@ def _compute_review(db: Session, prop: Property, lang: str = "en") -> dict:
     )
 
     try:
-        # Tight token budget + low temp + short timeout => fast first response.
         raw = chat(
             [{"role": "user", "content": prompt}],
             temperature=0.1, model=AI_RECOMMEND_MODEL, max_tokens=320, timeout=20.0,

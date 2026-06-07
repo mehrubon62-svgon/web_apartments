@@ -33,6 +33,5 @@ class BookingList(BaseModel):
 
 class CheckoutResponse(BaseModel):
     booking_id: int
-    # MockPay hosted checkout page URL — open it to pay.
     checkout_url: str
     payment_token: str

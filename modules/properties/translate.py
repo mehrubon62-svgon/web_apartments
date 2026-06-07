@@ -80,7 +80,6 @@ def translate_property(prop: Property, target: str) -> dict:
         "translated": False,
     }
 
-    # Already in the target language -> nothing to do.
     if source == target:
         return base
 

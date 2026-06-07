@@ -32,7 +32,6 @@ class PropertyCreate(BaseModel):
     area: float = Field(gt=0)
     rooms: int | None = Field(default=None, ge=0)
     address: str | None = None
-    # Manual pin (optional). If omitted, we geocode `address` via Mapbox.
     lat: float | None = None
     lng: float | None = None
     house_rules: str | None = None
@@ -73,7 +72,7 @@ class PropertyOut(BaseModel):
     status: PropertyStatus
     views_count: int
     created_at: datetime
-    cover_url: str | None = None   # main card image (a photo, never a 360 panorama)
+    cover_url: str | None = None
     media: list[MediaOut] = []
     has_tour: bool = False
     has_3d_tour: bool = False
@@ -104,7 +103,7 @@ class MapMarker(BaseModel):
 
 class InfrastructureMarker(BaseModel):
     id: int
-    kind: str  # metro | school | shop
+    kind: str
     name: str
     lat: float
     lng: float
@@ -179,13 +178,13 @@ class ComparisonResult(BaseModel):
     items: list[ComparisonRow]
     cheapest_id: int | None = None
     largest_id: int | None = None
-    best_value_id: int | None = None  # lowest price per m²
+    best_value_id: int | None = None
 
 
 class AIReviewResult(BaseModel):
-    verdict: str  # great_deal | fair | overpriced | suspicious | likely_scam | insufficient_data
-    deal_score: int  # 0..100
-    scam_risk: str  # low | medium | high | unknown
+    verdict: str
+    deal_score: int
+    scam_risk: str
     summary: str
     pros: list[str] = []
     cons: list[str] = []
@@ -197,6 +196,6 @@ class AIReviewResult(BaseModel):
 class TranslationResult(BaseModel):
     title: str
     description: str | None = None
-    target_lang: str          # ru | en
-    source_lang: str | None = None  # detected source, if known
-    translated: bool = False  # False if no translation was needed/available
+    target_lang: str
+    source_lang: str | None = None
+    translated: bool = False

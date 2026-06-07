@@ -21,7 +21,6 @@ def generate_code() -> str:
 
 
 def create_code(db: Session, email: str, purpose: EmailCodePurpose) -> str:
-    # Invalidate previous unused codes for this email+purpose.
     db.query(EmailCode).filter(
         EmailCode.email == email,
         EmailCode.purpose == purpose,

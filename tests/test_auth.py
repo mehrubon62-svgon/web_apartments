@@ -40,7 +40,6 @@ def test_password_reset_flow(client):
     email = f"u_{uuid.uuid4().hex[:8]}@example.com"
     client.post("/auth/register", json={"email": email, "password": "secret123", "role": "buyer"})
 
-    # No SMTP in tests -> dev_code is returned
     r = client.post("/auth/send-code", json={"email": email, "purpose": "reset"})
     assert r.status_code == 200
     code = r.json()["dev_code"]
@@ -48,6 +47,5 @@ def test_password_reset_flow(client):
     r = client.post("/auth/reset-password", json={"email": email, "code": code, "new_password": "newpass123"})
     assert r.status_code == 200
 
-    # Old password no longer works; new one does
     assert client.post("/auth/login", json={"email": email, "password": "secret123"}).status_code == 401
     assert client.post("/auth/login", json={"email": email, "password": "newpass123"}).status_code == 200

@@ -69,7 +69,6 @@ def submit_complaint(
     db.commit()
     db.refresh(complaint)
 
-    # Trigger AI moderation at the threshold (only while still active).
     total = db.query(Complaint).filter(Complaint.seller_id == data.seller_id).count()
     if total >= COMPLAINT_THRESHOLD and seller.status == UserStatus.active:
         from modules.queue import enqueue

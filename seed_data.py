@@ -55,10 +55,8 @@ from modules.users.crud import hash_password
 
 random.seed(42)
 
-# San Francisco-ish coordinates for a believable map.
 CENTER_LAT, CENTER_LNG = 37.7749, -122.4194
 
-# Real, public Unsplash real-estate photos (varied) for nice-looking cards.
 PHOTOS = [
     "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200",
     "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200",
@@ -77,7 +75,6 @@ PHOTOS = [
     "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=1200",
     "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?w=1200",
 ]
-# Public sample equirectangular panoramas for the 360 tours.
 PANOS = [
     "https://pannellum.org/images/alma.jpg",
     "https://pannellum.org/images/cerro-toco-0.jpg",
@@ -88,6 +85,30 @@ DISTRICTS = [
     "Mission", "SoMa", "Nob Hill", "Marina", "Sunset", "Hayes Valley",
     "Castro", "Richmond", "Pacific Heights", "Dogpatch", "Noe Valley", "Russian Hill",
 ]
+# Real on-land centres for each SF neighbourhood. Coordinates are jittered only
+# slightly (~300 m) around these so listings land on the actual streets instead
+# of floating in the Bay/Pacific (the old ±0.05° spread reached the water).
+DISTRICT_COORDS = {
+    "Mission": (37.7599, -122.4148),
+    "SoMa": (37.7785, -122.4056),
+    "Nob Hill": (37.7930, -122.4161),
+    "Marina": (37.8005, -122.4368),
+    "Sunset": (37.7600, -122.4690),
+    "Hayes Valley": (37.7765, -122.4244),
+    "Castro": (37.7609, -122.4350),
+    "Richmond": (37.7800, -122.4700),
+    "Pacific Heights": (37.7925, -122.4350),
+    "Dogpatch": (37.7575, -122.3905),
+    "Noe Valley": (37.7502, -122.4337),
+    "Russian Hill": (37.8010, -122.4180),
+}
+
+
+def district_coords(district: str):
+    """On-land lat/lng near a neighbourhood centre (small jitter, stays put)."""
+    lat0, lng0 = DISTRICT_COORDS.get(district, (CENTER_LAT, CENTER_LNG))
+    return (round(lat0 + random.uniform(-0.003, 0.003), 6),
+            round(lng0 + random.uniform(-0.003, 0.003), 6))
 STREETS = ["Market St", "Valencia St", "Folsom St", "Hayes St", "Union St", "Polk St",
            "Mission St", "Castro St", "Bryant St", "Lombard St", "Fillmore St"]
 
@@ -197,7 +218,6 @@ def seed():
             _print_counts(db)
             return
 
-        # ===== Users =====
         admin = make_user(db, "admin@nestora.app", RoleEnum.admin, "Platform Admin")
 
         sellers = [
@@ -222,24 +242,17 @@ def seed():
 
         primary_buyer = buyers[0]
 
-        # ===== Infrastructure markers (lots) =====
         infra_defs = (
-            [("metro", n) for n in ["Central Station", "Bay Line", "Civic Center", "Embarcadero",
-                                     "Powell St", "Montgomery", "Church St", "West Portal"]]
-            + [("school", n) for n in ["Lincoln High", "Sunset Elementary", "Mission Prep",
+            [("school", n) for n in ["Lincoln High", "Sunset Elementary", "Mission Prep",
                                         "Bay Academy", "Hill Montessori", "Marina Middle"]]
             + [("shop", n) for n in ["Market Plaza", "Corner Grocery", "Union Mall", "Hayes Market",
                                       "Polk Deli", "Castro Center", "Marina Foods"]]
         )
         for kind, name in infra_defs:
-            db.add(InfrastructurePOI(
-                kind=kind, name=name,
-                lat=CENTER_LAT + random.uniform(-0.05, 0.05),
-                lng=CENTER_LNG + random.uniform(-0.05, 0.05),
-            ))
+            ilat, ilng = district_coords(random.choice(DISTRICTS))
+            db.add(InfrastructurePOI(kind=kind, name=name, lat=ilat, lng=ilng))
         db.commit()
 
-        # ===== Properties =====
         N = 60
         created: list[Property] = []
         for i in range(N):
@@ -260,6 +273,7 @@ def seed():
             district = random.choice(DISTRICTS)
             title = f"{random.choice(ADJ)} {random.choice(NOUN[ptype])} in {district}"
             created_days_ago = random.randint(0, 120)
+            plat, plng = district_coords(district)
 
             prop = Property(
                 seller_id=seller.id,
@@ -272,8 +286,8 @@ def seed():
                 area=area,
                 rooms=rooms,
                 address=f"{random.randint(1, 999)} {random.choice(STREETS)}, {district}",
-                lat=CENTER_LAT + random.uniform(-0.05, 0.05),
-                lng=CENTER_LNG + random.uniform(-0.05, 0.05),
+                lat=plat,
+                lng=plng,
                 house_rules="No smoking. No parties. Quiet hours after 10pm." if deal == DealType.rent else None,
                 status=PropertyStatus.active if random.random() > 0.08 else PropertyStatus.paused,
                 views_count=random.randint(0, 400),
@@ -282,13 +296,11 @@ def seed():
             db.add(prop)
             db.flush()
 
-            # Photos (2-5) + at least one 360 panorama
             photos = random.sample(PHOTOS, random.randint(2, 5))
             for order, url in enumerate(photos):
                 db.add(PropertyMedia(property_id=prop.id, url=url, type=MediaKind.photo, order=order))
             db.add(PropertyMedia(property_id=prop.id, url=random.choice(PANOS), type=MediaKind.pano, order=50))
 
-            # Price history (a couple of points, sometimes a drop)
             base = price
             for offset in (40, 20, 0):
                 hp = round(base * (1 + random.uniform(-0.02, 0.08)), 2)
@@ -299,11 +311,9 @@ def seed():
             db.add(PriceHistory(property_id=prop.id, price=price,
                                 recorded_at=datetime.now(timezone.utc)))
 
-            # 360 tour for ~75% of listings
             if random.random() < 0.75:
                 db.add(Tour(property_id=prop.id, rooms=build_tour(prop.id)))
 
-            # Availability for rentals
             if deal == DealType.rent:
                 start = date.today() + timedelta(days=random.randint(1, 15))
                 db.add(Availability(property_id=prop.id, start_date=start,
@@ -314,7 +324,6 @@ def seed():
 
         active = [p for p in created if p.status == PropertyStatus.active]
 
-        # ===== Reviews (many, from various buyers) =====
         for prop in random.sample(created, int(len(created) * 0.7)):
             reviewers = random.sample(buyers, random.randint(1, min(4, len(buyers))))
             for reviewer in reviewers:
@@ -325,7 +334,6 @@ def seed():
                 ))
         db.commit()
 
-        # ===== Favorites + history for every buyer =====
         for b in buyers:
             for prop in random.sample(active, random.randint(4, 10)):
                 if not db.query(Favorite).filter(Favorite.user_id == b.id, Favorite.property_id == prop.id).first():
@@ -340,7 +348,6 @@ def seed():
                     ))
         db.commit()
 
-        # ===== Bookings on rentals =====
         rentals = [p for p in active if p.deal_type == DealType.rent]
         for prop in random.sample(rentals, min(len(rentals), 15)):
             renter = random.choice(buyers)
@@ -357,7 +364,6 @@ def seed():
             ))
         db.commit()
 
-        # ===== Purchase / viewing requests on sale listings =====
         sales = [p for p in active if p.deal_type == DealType.sale]
         for prop in random.sample(sales, min(len(sales), 18)):
             buyer = random.choice(buyers)
@@ -368,7 +374,6 @@ def seed():
             ))
         db.commit()
 
-        # ===== Conversations + messages (buyer <-> seller) =====
         for _ in range(20):
             prop = random.choice(active)
             buyer = random.choice(buyers)
@@ -396,7 +401,6 @@ def seed():
             convo.last_message_at = datetime.now(timezone.utc)
         db.commit()
 
-        # ===== Spatial Q&A history =====
         for _ in range(25):
             prop = random.choice(active)
             buyer = random.choice(buyers)
@@ -414,7 +418,6 @@ def seed():
             ))
         db.commit()
 
-        # ===== Price trackers =====
         for b in buyers:
             for prop in random.sample(active, random.randint(1, 4)):
                 if not db.query(PriceTracker).filter(
@@ -426,7 +429,6 @@ def seed():
                     ))
         db.commit()
 
-        # ===== Notifications for the primary buyer =====
         notif_samples = [
             (NotificationType.price_drop, {"title": "Price drop", "body": "A property on your tracker dropped 5%."}),
             (NotificationType.booking_confirmed, {"title": "Booking confirmed", "body": "Your stay is confirmed and paid."}),
@@ -438,7 +440,6 @@ def seed():
                                 read=random.random() < 0.4))
         db.commit()
 
-        # ===== A complaint or two (so admin has something to moderate) =====
         flagged_seller = sellers[-1]
         for b in random.sample(buyers, 2):
             db.add(Complaint(

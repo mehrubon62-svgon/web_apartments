@@ -18,7 +18,6 @@ from config import MEDIA_DIR
 
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-# Broader set for chat attachments (images + common documents)
 ALLOWED_ATTACHMENT_TYPES = ALLOWED_IMAGE_TYPES | {
     "application/pdf",
     "text/plain",

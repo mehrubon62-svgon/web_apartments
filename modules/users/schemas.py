@@ -9,7 +9,6 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     full_name: str | None = None
-    # Sellers can self-register and publish immediately (no verification).
     role: RoleEnum = RoleEnum.buyer
     company_name: str | None = None
 
@@ -37,7 +36,6 @@ class GoogleAuthRequest(BaseModel):
 
 class SendCodeRequest(BaseModel):
     email: EmailStr
-    # verify (default) | login | reset
     purpose: str = "verify"
 
 

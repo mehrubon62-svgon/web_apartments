@@ -20,8 +20,7 @@ class RoomLink(BaseModel):
 class Room(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     name: str
-    media_url: str  # equirectangular 360° image URL
-    # Initial camera angles when this room loads
+    media_url: str
     init_yaw: float = Field(0.0, ge=-180, le=180)
     init_pitch: float = Field(0.0, ge=-90, le=90)
     init_hfov: float = Field(100.0, ge=50, le=120)
@@ -30,7 +29,6 @@ class Room(BaseModel):
 
 class TourIn(BaseModel):
     rooms: list[Room]
-    # Which room opens first. Defaults to the first room.
     first_room_id: str | None = None
 
     @field_validator("rooms")
@@ -41,7 +39,6 @@ class TourIn(BaseModel):
         ids = [r.id for r in rooms]
         if len(ids) != len(set(ids)):
             raise ValueError("Room ids must be unique")
-        # Every link must point to an existing room
         valid = set(ids)
         for r in rooms:
             for link in r.links:
@@ -81,5 +78,5 @@ class Tour3DRoomNames(BaseModel):
         for rid, nm in names.items():
             nm = (nm or "").strip()
             if nm:
-                cleaned[str(rid)] = nm[:80]   # cap length
+                cleaned[str(rid)] = nm[:80]
         return cleaned

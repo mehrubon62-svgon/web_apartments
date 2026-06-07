@@ -21,7 +21,6 @@ import enum
 from config import DATABASE_URL
 
 
-# SQLite needs check_same_thread=False; Postgres/Supabase must not get that arg.
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=_connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -43,11 +42,10 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
-# ===== Enums =====
 
 class RoleEnum(str, enum.Enum):
-    buyer = "buyer"        # buyer / renter
-    seller = "seller"      # seller / landlord / realtor / developer / agency
+    buyer = "buyer"
+    seller = "seller"
     admin = "admin"
 
 
@@ -69,8 +67,8 @@ class DealType(str, enum.Enum):
 
 
 class RentTerm(str, enum.Enum):
-    short = "short"        # short-term
-    long = "long"          # long-term
+    short = "short"
+    long = "long"
 
 
 class PropertyStatus(str, enum.Enum):
@@ -81,7 +79,7 @@ class PropertyStatus(str, enum.Enum):
 
 class MediaKind(str, enum.Enum):
     photo = "photo"
-    pano = "360"           # 360° panorama
+    pano = "360"
 
 
 class BookingStatus(str, enum.Enum):
@@ -107,19 +105,18 @@ class NotificationType(str, enum.Enum):
 
 
 class ModerationDecision(str, enum.Enum):
-    unfounded = "unfounded"   # complaints unfounded, no action
+    unfounded = "unfounded"
     warning = "warning"
     ban = "ban"
 
 
-# ===== Users =====
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=True)  # nullable for Google-only accounts
+    hashed_password = Column(String(255), nullable=True)
     full_name = Column(String(120), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     phone = Column(String(30), nullable=True)
@@ -127,7 +124,6 @@ class User(Base):
     role = Column(SQLEnum(RoleEnum), default=RoleEnum.buyer, nullable=False, index=True)
     status = Column(SQLEnum(UserStatus), default=UserStatus.active, nullable=False, index=True)
 
-    # Seller-specific profile bits (optional)
     company_name = Column(String(150), nullable=True)
 
     google_sub = Column(String(255), unique=True, nullable=True, index=True)
@@ -163,9 +159,9 @@ class RefreshToken(Base):
 
 
 class EmailCodePurpose(str, enum.Enum):
-    verify = "verify"          # confirm email on registration
-    login = "login"            # passwordless / 2-step login
-    reset = "reset"            # password reset
+    verify = "verify"
+    login = "login"
+    reset = "reset"
 
 
 class EmailCode(Base):
@@ -177,7 +173,7 @@ class EmailCode(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), nullable=False, index=True)
-    code_hash = Column(String(255), nullable=False)  # we store a hash, not the raw code
+    code_hash = Column(String(255), nullable=False)
     purpose = Column(SQLEnum(EmailCodePurpose), nullable=False)
     attempts = Column(Integer, default=0, nullable=False)
     used = Column(Boolean, default=False, nullable=False)
@@ -185,7 +181,6 @@ class EmailCode(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
-# ===== Properties =====
 
 class Property(Base):
     __tablename__ = "properties"
@@ -197,17 +192,17 @@ class Property(Base):
     description = Column(Text, nullable=True)
     type = Column(SQLEnum(PropertyType), nullable=False, index=True)
     deal_type = Column(SQLEnum(DealType), nullable=False, index=True)
-    rent_term = Column(SQLEnum(RentTerm), nullable=True)  # only for rentals
+    rent_term = Column(SQLEnum(RentTerm), nullable=True)
 
     price = Column(Float, nullable=False, index=True)
-    area = Column(Float, nullable=False, index=True)  # m²
+    area = Column(Float, nullable=False, index=True)
     rooms = Column(Integer, nullable=True)
 
     address = Column(String(400), nullable=True)
     lat = Column(Float, nullable=True, index=True)
     lng = Column(Float, nullable=True, index=True)
 
-    house_rules = Column(Text, nullable=True)        # rentals
+    house_rules = Column(Text, nullable=True)
     status = Column(SQLEnum(PropertyStatus), default=PropertyStatus.active, nullable=False, index=True)
 
     views_count = Column(Integer, default=0, nullable=False)
@@ -263,7 +258,6 @@ class Tour(Base):
     property = relationship("Property", back_populates="tour")
 
 
-# ===== Rentals: availability calendar =====
 
 class Availability(Base):
     """A single bookable date range a landlord marks as available."""
@@ -312,14 +306,13 @@ class PaymentSession(Base):
     booking_id = Column(Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
     amount = Column(Float, nullable=False)
     currency = Column(String(10), default="usd", nullable=False)
-    status = Column(String(20), default="open", nullable=False)  # open|paid|cancelled|expired
+    status = Column(String(20), default="open", nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
     booking = relationship("Booking")
 
 
-# ===== Purchase requests (sale) / viewing requests =====
 
 class PurchaseRequest(Base):
     """A viewing/purchase request submitted by a buyer for a sale listing."""
@@ -336,7 +329,6 @@ class PurchaseRequest(Base):
     buyer = relationship("User")
 
 
-# ===== Favorites =====
 
 class Favorite(Base):
     __tablename__ = "favorites"
@@ -350,7 +342,6 @@ class Favorite(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
-# ===== Viewing history =====
 
 class ViewingHistory(Base):
     __tablename__ = "viewing_history"
@@ -361,7 +352,6 @@ class ViewingHistory(Base):
     viewed_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
 
-# ===== Spatial Q&A =====
 
 class SpatialQA(Base):
     """A question asked about a rectangular zone inside a 360° tour."""
@@ -370,28 +360,26 @@ class SpatialQA(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     property_id = Column(Integer, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
-    room_id = Column(String(100), nullable=True)  # which tour room
-    zone_coords = Column(JSON, nullable=False)     # {"x":..,"y":..,"w":..,"h":..} normalized 0..1
-    image_url = Column(String(500), nullable=True) # screenshot of the zone
+    room_id = Column(String(100), nullable=True)
+    zone_coords = Column(JSON, nullable=False)
+    image_url = Column(String(500), nullable=True)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=True)
-    status = Column(String(20), default="pending", nullable=False)  # pending|done|error
+    status = Column(String(20), default="pending", nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
 
-# ===== AI conversations =====
 
 class AIConversation(Base):
     __tablename__ = "ai_conversations"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    messages = Column(JSON, nullable=False, default=list)  # [{"role","content"}, ...]
+    messages = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
-# ===== Notifications =====
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -399,12 +387,11 @@ class Notification(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     type = Column(SQLEnum(NotificationType), nullable=False)
-    content = Column(JSON, nullable=False, default=dict)  # {"title","body","property_id",...}
+    content = Column(JSON, nullable=False, default=dict)
     read = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
 
-# ===== Complaints & moderation =====
 
 class Complaint(Base):
     __tablename__ = "complaints"
@@ -429,7 +416,6 @@ class ModerationRecord(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
 
-# ===== Reviews =====
 
 class Review(Base):
     __tablename__ = "reviews"
@@ -440,7 +426,7 @@ class Review(Base):
     id = Column(Integer, primary_key=True, index=True)
     property_id = Column(Integer, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    rating = Column(Integer, nullable=False)  # 1..5
+    rating = Column(Integer, nullable=False)
     text = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
@@ -448,7 +434,6 @@ class Review(Base):
     user = relationship("User")
 
 
-# ===== Price history & trackers =====
 
 class PriceHistory(Base):
     __tablename__ = "price_history"
@@ -470,24 +455,22 @@ class PriceTracker(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     property_id = Column(Integer, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_price = Column(Float, nullable=True)  # notify when price <= target (or any drop if null)
+    target_price = Column(Float, nullable=True)
     last_seen_price = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
-# ===== Infrastructure markers (metro, schools, shops) =====
 
 class InfrastructurePOI(Base):
     __tablename__ = "infrastructure_pois"
 
     id = Column(Integer, primary_key=True, index=True)
-    kind = Column(String(40), nullable=False, index=True)  # metro|school|shop
+    kind = Column(String(40), nullable=False, index=True)
     name = Column(String(200), nullable=False)
     lat = Column(Float, nullable=False, index=True)
     lng = Column(Float, nullable=False, index=True)
 
 
-# ===== Direct messaging (buyer <-> realtor) =====
 
 class Conversation(Base):
     """A 1-on-1 thread between a buyer and a seller, optionally about a property."""
@@ -515,14 +498,12 @@ class DirectMessage(Base):
     id = Column(Integer, primary_key=True, index=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    # text is optional when an attachment is present
     text = Column(Text, nullable=True)
 
-    # Attachment (file/image) — optional
     attachment_url = Column(String(500), nullable=True)
     attachment_name = Column(String(255), nullable=True)
-    attachment_type = Column(String(100), nullable=True)  # MIME type
-    attachment_size = Column(Integer, nullable=True)       # bytes
+    attachment_type = Column(String(100), nullable=True)
+    attachment_size = Column(Integer, nullable=True)
 
     is_read = Column(Boolean, default=False, nullable=False, index=True)
     is_edited = Column(Boolean, default=False, nullable=False)

@@ -13,7 +13,7 @@ router = APIRouter(prefix="/price-trackers", tags=["Price Trackers"])
 
 class TrackerIn(BaseModel):
     property_id: int
-    target_price: float | None = None  # notify when price <= target; null = any drop
+    target_price: float | None = None
 
 
 class TrackerOut(BaseModel):

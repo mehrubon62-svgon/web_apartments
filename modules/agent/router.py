@@ -207,7 +207,6 @@ def agent_chat(
 
     convo = _get_or_create_conversation(db, current_user.id, data.conversation_id)
 
-    # Rebuild the working transcript: system + stored history + new user turn.
     history = list(convo.messages or [])
     lang = "ru" if str(data.lang).lower().startswith("ru") else "en"
     if lang == "ru":
@@ -224,7 +223,6 @@ def agent_chat(
     working.append({"role": "system", "content": f"Today's date is {datetime.utcnow().date().isoformat()} (UTC)."})
     working.extend(history)
     working.append({"role": "user", "content": data.message})
-    # Reinforce language right before generation (strongest position).
     working.append({"role": "system", "content": (
         "Отвечай на русском языке." if lang == "ru" else "Respond in English."
     )})
@@ -260,7 +258,6 @@ def agent_chat(
                     }
                 )
         else:
-            # Ran out of rounds: ask for a final plain answer (no more tools).
             working.append({
                 "role": "user",
                 "content": (
@@ -280,7 +277,6 @@ def agent_chat(
             reply = content if isinstance(content, str) else json.dumps(content)
             break
 
-    # Persist the conversation (exclude the system prompt).
     convo.messages = [m for m in working if m.get("role") != "system"]
     db.commit()
     db.refresh(convo)
@@ -347,7 +343,6 @@ def agent_chat_stream(
         tool_results: list[dict] = []
         final_text = ""
         try:
-            # Tool-calling loop (non-streamed; tools need full responses).
             for _ in range(MAX_TOOL_ROUNDS):
                 assistant_msg = chat_with_tools(working, TOOLS)
                 working.append(assistant_msg)
@@ -369,7 +364,6 @@ def agent_chat_stream(
                         "name": name, "content": json.dumps(result, ensure_ascii=False),
                     })
 
-            # Emit metadata first (conversation id + result blocks).
             yield sse({
                 "type": "meta",
                 "conversation_id": convo.id,
@@ -377,8 +371,6 @@ def agent_chat_stream(
                 "results": _build_ui_results(tool_results),
             })
 
-            # Always stream the FINAL answer token-by-token (no tools here), so it
-            # types out in the UI whether or not tools were used.
             stream_msgs = list(working)
             stream_msgs.append({
                 "role": "system",
@@ -393,7 +385,6 @@ def agent_chat_stream(
                 acc = []
             final_text = "".join(acc).strip()
             if not final_text:
-                # Fallback: reuse any assistant content already produced.
                 for m in reversed(working):
                     if m.get("role") == "assistant" and m.get("content"):
                         c = m["content"]
@@ -403,14 +394,13 @@ def agent_chat_stream(
                     yield sse({"type": "delta", "text": final_text})
             working.append({"role": "assistant", "content": final_text})
 
-            # Persist (exclude system messages).
             convo.messages = [m for m in working if m.get("role") != "system"]
             db.commit()
 
             yield sse({"type": "done", "reply": final_text})
         except AIError as exc:
             yield sse({"type": "error", "detail": str(exc)})
-        except Exception as exc:  # noqa: BLE001 — never break the stream silently
+        except Exception as exc:
             yield sse({"type": "error", "detail": str(exc)})
 
     return StreamingResponse(generate(), media_type="text/event-stream", headers={

@@ -67,7 +67,6 @@ def submit(
     db.commit()
     db.refresh(req)
 
-    # Notify the seller (realtime).
     create_notification(
         db,
         user_id=prop.seller_id,

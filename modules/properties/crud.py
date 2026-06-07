@@ -55,7 +55,6 @@ def create_property(db: Session, seller_id: int, data: dict, media: list[dict]) 
             )
         )
 
-    # Seed price history with the initial price.
     db.add(PriceHistory(property_id=prop.id, price=prop.price))
     db.commit()
     db.refresh(prop)
@@ -75,7 +74,6 @@ def update_property(db: Session, prop: Property, fields: dict) -> Property:
 
 
 def delete_property(db: Session, prop: Property) -> None:
-    # Soft-delete to preserve history/bookings integrity.
     prop.status = PropertyStatus.deleted
     db.commit()
 
@@ -118,8 +116,6 @@ def search_properties(
     if rooms is not None:
         q = q.filter(Property.rooms == rooms)
 
-    # Explicit sort (e.g. cheapest/largest first) takes precedence over the
-    # seed shuffle and the default newest-first ordering.
     if sort_by in ("price", "area"):
         col = Property.price if sort_by == "price" else Property.area
         col = col.asc() if (order or "asc").lower() == "asc" else col.desc()
@@ -129,8 +125,6 @@ def search_properties(
         return items, total
 
     if seed is not None:
-        # Shuffle deterministically by seed so the order varies per page-load
-        # but stays stable across paginated "show more" requests (no dupes).
         import random as _random
         rows = q.all()
         _random.Random(seed).shuffle(rows)
@@ -200,7 +194,6 @@ def market_stats(db: Session, prop: Property) -> dict:
     avg_ppsqm = sum(ppsqm) / len(ppsqm) if ppsqm else None
 
     this_ppsqm = (prop.price / prop.area) if prop.area else None
-    # How this listing compares to the market median (1.0 == at market).
     price_ratio = (prop.price / median_price) if median_price else None
     ppsqm_ratio = (this_ppsqm / avg_ppsqm) if (this_ppsqm and avg_ppsqm) else None
 
@@ -227,7 +220,6 @@ def heuristic_review(prop: Property, stats: dict) -> dict:
     pros: list[str] = []
     cons: list[str] = []
 
-    # Sanity flags independent of market data.
     if prop.area and prop.rooms and prop.area / max(prop.rooms, 1) < 6:
         red_flags.append("Unrealistically small area per room")
     if not prop.description:

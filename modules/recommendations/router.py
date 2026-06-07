@@ -73,7 +73,6 @@ def ai_recommendations(
     (DeepSeek via OpenRouter) re-ranks them and explains each pick. Falls back
     to the pure algorithm order if AI is unavailable.
     """
-    # Pull a slightly larger candidate set so the LLM has room to reorder.
     candidate_ids = compute_recommendations(db, current_user.id, limit=max(limit * 2, 10))
     rerank = ai_rerank(db, current_user.id, candidate_ids, query=query, lang="ru" if lang == "ru" else "en")
 

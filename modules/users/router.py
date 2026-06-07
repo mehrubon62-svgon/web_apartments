@@ -79,7 +79,6 @@ def _dispatch_code(db: Session, email: str, purpose: EmailCodePurpose) -> dict:
 
     resp = {"detail": "Verification code sent", "expires_in_min": EMAIL_CODE_TTL_MIN}
     if not email_configured():
-        # Dev convenience only: surface the code when no SMTP is set up.
         resp["dev_code"] = code
     return resp
 
@@ -112,7 +111,6 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
         role=data.role,
         company_name=data.company_name,
     )
-    # Fire off the email verification code.
     _dispatch_code(db, user.email, EmailCodePurpose.verify)
     return _issue_tokens(db, user)
 
@@ -121,7 +119,6 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
 def send_code(data: SendCodeRequest, db: Session = Depends(get_db)):
     """Send a verification code to an email (purpose: verify | login | reset)."""
     purpose = _parse_purpose(data.purpose)
-    # For login/reset the user must exist; for verify we allow any (registration).
     if purpose in (EmailCodePurpose.login, EmailCodePurpose.reset):
         if not get_user_by_email(db, data.email):
             raise HTTPException(status_code=404, detail="No account with this email")
@@ -169,7 +166,6 @@ def reset_password(data: PasswordResetRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     set_password(db, user, data.new_password)
-    # Security: invalidate all existing sessions after a password reset.
     revoke_all_user_tokens(db, user.id)
     return {"detail": "Password reset. Please log in with your new password."}
 
@@ -217,12 +213,10 @@ def google_auth(data: GoogleAuthRequest, db: Session = Depends(get_db)):
 
     google_name = info.get("name")
     google_avatar = info.get("picture")
-    # Google verifies emails itself; the claim is "true"/"True" or bool.
     google_email_verified = str(info.get("email_verified", "true")).lower() == "true"
 
     user = get_user_by_google_sub(db, sub) or get_user_by_email(db, email)
     if not user:
-        # New account — prefill name + avatar straight from the Google profile.
         user = create_user(
             db,
             email=email,
@@ -235,7 +229,6 @@ def google_auth(data: GoogleAuthRequest, db: Session = Depends(get_db)):
         user.is_email_verified = google_email_verified
         db.commit()
     else:
-        # Existing account — link Google and backfill any missing profile fields.
         if not user.google_sub:
             user.google_sub = sub
         if not user.full_name and google_name:
@@ -279,7 +272,6 @@ def logout(
     return {"detail": "Logged out"}
 
 
-# ---- Users / me ----
 
 @users_router.get("/me", response_model=UserMe)
 def get_me(current_user: User = Depends(get_current_user)):
@@ -333,7 +325,6 @@ def delete_me(
     return {"detail": "Account deleted"}
 
 
-# ---- Public seller profile ----
 
 @users_router.get("/{user_id}/public")
 def public_profile(user_id: int, db: Session = Depends(get_db)):
@@ -355,7 +346,6 @@ def public_profile(user_id: int, db: Session = Depends(get_db)):
         .count()
     )
 
-    # Average rating across reviews on this seller's properties.
     avg_rating = (
         db.query(func.avg(Review.rating))
         .join(Property, Property.id == Review.property_id)
@@ -459,7 +449,6 @@ def seller_reviews(
     return {"items": out, "total": len(out)}
 
 
-# ---- Account deletion (AI-reviewed) ----
 
 class DeleteAccountRequest(BaseModel):
     confirmation: str
@@ -484,7 +473,6 @@ def request_account_deletion(
     if (data.confirmation or "").strip().lower() != expected:
         raise HTTPException(status_code=400, detail="Confirmation text does not match")
 
-    # AI moderation of the deletion request (lenient — approves almost always).
     decision, ai_note = _review_deletion(data.reason or "", data.lang)
     if decision != "approve":
         return {"approved": False, "detail": ai_note}
@@ -492,10 +480,8 @@ def request_account_deletion(
     email = user.email
     full_name = user.full_name or email
 
-    # Send confirmation email (best-effort, non-blocking).
     _send_deletion_email(email, full_name, data.lang)
 
-    # Hard-delete the account and all related data (cascades).
     revoke_all_user_tokens(db, user.id)
     db.delete(user)
     db.commit()

@@ -125,7 +125,6 @@ def send_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
     _ensure_member(convo, current_user.id)
 
-    # Validate reply target belongs to this conversation.
     if data.reply_to_id is not None:
         parent = get_message(db, data.reply_to_id)
         if not parent or parent.conversation_id != conversation_id:
@@ -149,7 +148,6 @@ def mark_conversation_read(
     _ensure_member(convo, current_user.id)
     count = mark_read(db, conversation_id, current_user.id)
 
-    # Tell the other party their messages were read (read receipts).
     other_id = convo.seller_id if current_user.id == convo.buyer_id else convo.buyer_id
     publish_event_sync(other_id, "message:read", {"conversation_id": convo.id, "by_user_id": current_user.id})
     return {"detail": "Marked as read", "updated": count}
@@ -199,7 +197,6 @@ def update_message(
 
     msg = edit_message(db, msg, data.text)
 
-    # Live update to the other participant
     recipient_id = convo.seller_id if current_user.id == convo.buyer_id else convo.buyer_id
     publish_event_sync(
         recipient_id,
@@ -250,7 +247,6 @@ def _preview(msg: DirectMessage) -> str:
 def _notify_recipient(db: Session, convo: Conversation, sender: User, text: str) -> None:
     recipient_id = convo.seller_id if sender.id == convo.buyer_id else convo.buyer_id
 
-    # Realtime live message event
     publish_event_sync(
         recipient_id,
         "message:new",
@@ -260,7 +256,6 @@ def _notify_recipient(db: Session, convo: Conversation, sender: User, text: str)
             "text": text,
         },
     )
-    # Persisted notification (matches the brief's "new message from realtor")
     create_notification(
         db,
         user_id=recipient_id,

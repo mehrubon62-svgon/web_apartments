@@ -18,9 +18,6 @@ from modules.tours import matterport
 from modules.tours import router as tours_router
 
 
-# ---------------------------------------------------------------------------
-# Helpers: build a minimal but realistic matterport-dl dump in memory.
-# ---------------------------------------------------------------------------
 HASH = "8885f156284c47c0b6e49daff3cf2c8b"
 MODEL_ID = "BxeZPN7PQWL"
 FACE_COLORS = [(200, 60, 60), (60, 200, 60), (60, 60, 200),
@@ -45,8 +42,6 @@ def build_matterport_zip(n=3, top=MODEL_ID, with_details=True, with_rooms=True, 
     uuids = [f"{i:032x}" for i in range(1, n + 1)]
     locations = []
     for i, uuid in enumerate(uuids):
-        # camera height (z) is ~constant -> z becomes the vertical axis,
-        # exactly like a real Matterport pano frame.
         pos = {"x": i * 3.0, "y": i * 0.5, "z": 1.45}
         neighbors = []
         if i > 0:
@@ -120,16 +115,13 @@ def build_generic_skybox_zip(with_meta=True, traversal=False):
                 ],
             }))
         if traversal:
-            zf.writestr("../evil.txt", b"pwned")             # path traversal
-            zf.writestr("/abs_evil.txt", b"pwned")           # absolute path
-            zf.writestr("ok/passwd.exe", b"bad")             # disallowed ext
+            zf.writestr("../evil.txt", b"pwned")
+            zf.writestr("/abs_evil.txt", b"pwned")
+            zf.writestr("ok/passwd.exe", b"bad")
     buf.seek(0)
     return buf.getvalue()
 
 
-# ===========================================================================
-# 9.1  Matterport dump detection
-# ===========================================================================
 def test_is_matterport_dump_true_for_dump():
     names = zipfile.ZipFile(io.BytesIO(build_matterport_zip(n=2))).namelist()
     assert matterport.is_matterport_dump(names) is True
@@ -140,16 +132,12 @@ def test_is_matterport_dump_false_for_plain_images():
     assert matterport.is_matterport_dump(names) is False
 
 
-# ===========================================================================
-# 9.2  Model-id extraction
-# ===========================================================================
 def test_extract_model_id_from_top_folder():
     zf = zipfile.ZipFile(io.BytesIO(build_matterport_zip(n=2, top=MODEL_ID)))
     assert matterport.extract_model_id(zf, zf.namelist()) == MODEL_ID
 
 
 def test_extract_model_id_from_details_when_no_top_folder():
-    # no single top folder -> must fall back to graph_GetModelDetails.json
     zf = zipfile.ZipFile(io.BytesIO(build_matterport_zip(n=2, top="")))
     assert matterport.extract_model_id(zf, zf.namelist()) == MODEL_ID
 
@@ -159,9 +147,6 @@ def test_extract_model_id_none_for_plain():
     assert matterport.extract_model_id(zf, zf.namelist()) is None
 
 
-# ===========================================================================
-# 9.3  Cube -> equirectangular conversion
-# ===========================================================================
 def test_cube_to_equirect(tmp_path):
     from PIL import Image
     zf = zipfile.ZipFile(io.BytesIO(build_matterport_zip(n=2)))
@@ -173,9 +158,6 @@ def test_cube_to_equirect(tmp_path):
         assert w == 2 * h, f"{p.name} must be equirectangular (w == 2*h), got {w}x{h}"
 
 
-# ===========================================================================
-# 9.4  metadata.json correctness
-# ===========================================================================
 def test_metadata_correctness(tmp_path):
     zf = zipfile.ZipFile(io.BytesIO(build_matterport_zip(n=3)))
     meta = matterport.convert(zf, tmp_path)
@@ -187,25 +169,17 @@ def test_metadata_correctness(tmp_path):
 
     valid = set(ids)
     for r in rooms:
-        # links only point to existing rooms
         for link in r["links"]:
             assert link["to"] in valid
             assert -180.0 <= link["yaw"] <= 180.0, "sane yaw"
             assert math.isfinite(link["yaw"])
-        # plan coordinates normalised into 0..1
         assert 0.0 <= r["plan"]["x"] <= 1.0 and 0.0 <= r["plan"]["y"] <= 1.0
-        # per-sweep heading baked for world-frame alignment
         assert "heading" in r and math.isfinite(r["heading"])
 
-    # the room name picked up the tag label ("Kitchen" / "Bedroom")
     assert any("Kitchen" in r["name"] or "Bedroom" in r["name"] for r in rooms)
-    # neighbour graph is symmetric in our fixture -> at least one link exists
     assert sum(len(r["links"]) for r in rooms) >= 2
 
 
-# ===========================================================================
-# Endpoint fixtures
-# ===========================================================================
 @pytest.fixture()
 def media_tmp(monkeypatch, tmp_path):
     """Point the 3D-tour storage at a throwaway dir so tests don't touch real media."""
@@ -218,9 +192,6 @@ def _upload(client, headers, pid, data, filename="tour.zip"):
                        files={"file": (filename, data, "application/zip")})
 
 
-# ===========================================================================
-# 9.5  Upload endpoint — ok payload, seller-only, traversal, oversize
-# ===========================================================================
 def test_upload_generic_ok(client, seller, listing, media_tmp):
     pid = listing["id"]
     r = _upload(client, seller["headers"], pid, build_generic_skybox_zip())
@@ -243,7 +214,6 @@ def test_upload_blocks_path_traversal(client, seller, listing, media_tmp):
     r = _upload(client, seller["headers"], pid, build_generic_skybox_zip(traversal=True))
     assert r.status_code == 200, r.text
     base = media_tmp / "tours3d" / str(pid)
-    # nothing escaped the destination, and disallowed ext was dropped
     assert not (media_tmp / "evil.txt").exists()
     assert not (base.parent / "evil.txt").exists()
     assert not (base / "ok" / "passwd.exe").exists()
@@ -251,7 +221,7 @@ def test_upload_blocks_path_traversal(client, seller, listing, media_tmp):
 
 
 def test_upload_oversize_rejected(client, seller, listing, media_tmp, monkeypatch):
-    monkeypatch.setattr(tours_router, "_MAX_ZIP_MB", 0)   # any non-empty ZIP is "too big"
+    monkeypatch.setattr(tours_router, "_MAX_ZIP_MB", 0)
     r = _upload(client, seller["headers"], pid := listing["id"], build_generic_skybox_zip())
     assert r.status_code == 400
     assert "exceeds" in r.json()["detail"].lower()
@@ -269,12 +239,8 @@ def test_upload_matterport_returns_model_id(client, seller, listing, media_tmp):
     assert list((base / "skyboxes").glob("*.jpg")), "equirect panoramas written"
 
 
-# ===========================================================================
-# 9.6  Persistence — keeps any pre-existing 360° rooms, exposes matterport_id
-# ===========================================================================
 def test_3d_upload_preserves_existing_360_tour(client, seller, buyer, listing, media_tmp):
     pid = listing["id"]
-    # 1) a normal 360 tour authored first
     tour360 = {
         "first_room_id": "a",
         "rooms": [
@@ -285,17 +251,14 @@ def test_3d_upload_preserves_existing_360_tour(client, seller, buyer, listing, m
     }
     assert client.put(f"/tours/{pid}", headers=seller["headers"], json=tour360).status_code == 200
 
-    # 2) upload the 3D tour on top
     r = _upload(client, seller["headers"], pid, build_matterport_zip(n=2))
     assert r.status_code == 200, r.text
 
-    # 3) GET /3d exposes base + matterport_id
     g = client.get(f"/tours/{pid}/3d")
     assert g.status_code == 200, g.text
     assert g.json()["base"] == f"/media-files/tours3d/{pid}/"
     assert g.json()["matterport_id"] == MODEL_ID
 
-    # 4) the original 360 rooms are still intact
     t = client.get(f"/tours/{pid}", headers=buyer["headers"])
     assert t.status_code == 200
     room_ids = {room["id"] for room in t.json()["rooms"]}
@@ -307,55 +270,42 @@ def test_get_3d_404_when_absent(client, buyer, listing, media_tmp):
     assert r.status_code == 404
 
 
-# ===========================================================================
-# 9.7  Delete — removes files + marker, seller-only
-# ===========================================================================
 def test_delete_3d_tour(client, seller, buyer, listing, media_tmp):
     pid = listing["id"]
     assert _upload(client, seller["headers"], pid, build_matterport_zip(n=2)).status_code == 200
     base = media_tmp / "tours3d" / str(pid)
     assert base.exists()
 
-    # buyer cannot delete
     assert client.delete(f"/tours/{pid}/3d", headers=buyer["headers"]).status_code == 403
 
-    # seller deletes -> files + marker gone
     d = client.delete(f"/tours/{pid}/3d", headers=seller["headers"])
     assert d.status_code == 200
     assert not base.exists()
     assert client.get(f"/tours/{pid}/3d").status_code == 404
 
 
-# ===========================================================================
-# Owner-renamable points (custom 3D-tour point names)
-# ===========================================================================
 def test_rename_3d_rooms(client, seller, buyer, listing, media_tmp):
     pid = listing["id"]
     assert _upload(client, seller["headers"], pid, build_matterport_zip(n=3)).status_code == 200
 
-    # list points
     g = client.get(f"/tours/{pid}/3d/rooms")
     assert g.status_code == 200, g.text
     rooms = g.json()["rooms"]
     assert len(rooms) == 3 and all(r["id"] for r in rooms)
 
     rid = rooms[0]["id"]
-    # buyer cannot rename
     assert client.patch(f"/tours/{pid}/3d/rooms", headers=buyer["headers"],
                         json={"names": {rid: "Hack"}}).status_code == 403
 
-    # seller renames one point
     r = client.patch(f"/tours/{pid}/3d/rooms", headers=seller["headers"],
                      json={"names": {rid: "Living Room"}})
     assert r.status_code == 200, r.text
     assert r.json()["updated"] == 1
 
-    # the new name persisted and is visible on next read
     g2 = client.get(f"/tours/{pid}/3d/rooms")
     name_by_id = {x["id"]: x["name"] for x in g2.json()["rooms"]}
     assert name_by_id[rid] == "Living Room"
 
-    # and it landed in metadata.json the viewer reads
     import json as _json
     meta = _json.loads((media_tmp / "tours3d" / str(pid) / "metadata.json").read_text())
     assert any(rm["id"] == rid and rm["name"] == "Living Room" for rm in meta["rooms"])
@@ -369,26 +319,20 @@ def test_rename_3d_rooms_404_without_tour(client, seller, listing, media_tmp):
 
 def test_3d_progress_endpoint(client, seller, listing, media_tmp):
     pid = listing["id"]
-    # idle before any upload
     r0 = client.get(f"/tours/{pid}/3d/progress")
     assert r0.status_code == 200 and r0.json()["pct"] == 0
-    # after a (synchronous, in-test) upload, conversion has finished -> 100%
     assert _upload(client, seller["headers"], pid, build_matterport_zip(n=2)).status_code == 200
     r1 = client.get(f"/tours/{pid}/3d/progress")
     assert r1.status_code == 200
     assert r1.json()["stage"] == "done" and r1.json()["pct"] == 100
 
 
-# ===========================================================================
-# Multi-floor metadata (floor selector)
-# ===========================================================================
 def test_floors_metadata(tmp_path):
     zf = zipfile.ZipFile(io.BytesIO(build_matterport_zip(n=4, floors=2)))
     meta = matterport.convert(zf, tmp_path)
     floors = meta.get("floors")
     assert floors and len(floors) == 2
     assert {f["index"] for f in floors} == {0, 1}
-    # every room carries a floor index within range
     seen = set()
     for r in meta["rooms"]:
         assert r.get("floor") in (0, 1)
@@ -403,9 +347,6 @@ def test_single_floor_default(tmp_path):
     assert all(r.get("floor") == 0 for r in meta["rooms"])
 
 
-# ===========================================================================
-# .dam mesh robustness — reject decode spikes / garbage geometry
-# ===========================================================================
 def _varint(n):
     out = bytearray()
     while True:
@@ -429,11 +370,9 @@ def _dam_chunk(verts, tris):
 def test_build_glb_clips_outlier_spikes():
     from modules.tours.dam import build_glb
     import struct as _s, json as _json
-    # 4 good verts near origin + 1 wild spike; 2 good tris + 1 tri using the spike
     verts = [(0, 0, 0), (1, 0, 0), (0, 0, 1), (1, 0, 1), (1000.0, 1000.0, 1000.0)]
-    tris = [(0, 1, 2), (1, 3, 2), (0, 4, 1)]   # last triangle hits the spike
+    tris = [(0, 1, 2), (1, 3, 2), (0, 4, 1)]
     glb = build_glb([_dam_chunk(verts, tris)], None, axis_map=(0, 2, 1), sweeps=[(0, 0, 0)])
-    # parse glb bbox
     off, L = 12, _s.unpack_from("<I", glb, 8)[0]
     gltf = None
     while off < L:
@@ -442,14 +381,12 @@ def test_build_glb_clips_outlier_spikes():
             gltf = _json.loads(glb[off:off + clen])
         off += clen
     posacc = next(a for a in gltf["accessors"] if a.get("type") == "VEC3" and "min" in a)
-    # the 1000,1000,1000 spike must be gone -> bbox stays small
     assert max(abs(x) for x in posacc["min"] + posacc["max"]) < 50, "outlier spike not clipped"
 
 
 def test_build_glb_rejects_mostly_garbage():
     from modules.tours.dam import build_glb
     import pytest as _pytest
-    # almost everything far out of bounds -> should bail (caller falls back)
     verts = [(500.0 + i, 500.0, 500.0) for i in range(6)]
     tris = [(0, 1, 2), (3, 4, 5)]
     with _pytest.raises(Exception):

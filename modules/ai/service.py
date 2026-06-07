@@ -38,7 +38,6 @@ def _headers() -> dict[str, str]:
     headers = {
         "Authorization": f"Bearer {AI_API_KEY}",
         "Content-Type": "application/json",
-        # OpenRouter attribution (harmless for other providers)
         "HTTP-Referer": AI_APP_URL,
         "X-Title": AI_APP_TITLE,
     }
@@ -73,7 +72,6 @@ def _post(payload: dict[str, Any], timeout: float = 60.0) -> dict[str, Any]:
             try:
                 resp = client.post(url, headers=_headers(), json=body)
                 if resp.status_code in (404, 429):
-                    # Model gone or rate-limited -> try the next fallback.
                     last_err = f"{resp.status_code}: {resp.text[:160]}"
                     continue
                 resp.raise_for_status()
@@ -232,7 +230,6 @@ def _first_text(data: dict[str, Any]) -> str:
         return ""
     message = choices[0].get("message", {})
     content = message.get("content", "")
-    # Some providers return content as a list of blocks
     if isinstance(content, list):
         parts = [b.get("text", "") for b in content if isinstance(b, dict)]
         return "".join(parts).strip()

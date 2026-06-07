@@ -86,7 +86,7 @@ def _apply_decision(db: Session, seller: User, decision: ModerationDecision) -> 
         seller.status = UserStatus.banned
     elif decision == ModerationDecision.warning:
         seller.status = UserStatus.warned
-    else:  # unfounded
+    else:
         seller.status = UserStatus.active
     db.commit()
 
@@ -116,7 +116,6 @@ def override_decision(
     db.commit()
     db.refresh(record)
 
-    # Notify the seller about the (new) decision.
     type_map = {
         ModerationDecision.ban: NotificationType.ban,
         ModerationDecision.warning: NotificationType.warning,

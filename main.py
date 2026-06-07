@@ -11,7 +11,6 @@ from config import MEDIA_DIR, MAPBOX_TOKEN, GOOGLE_CLIENT_ID, AI_API_KEY
 from models import Base, engine
 from modules.observability.middleware import RequestLogMiddleware, configure_logging
 
-# Routers
 from modules.users.router import router as auth_router, users_router
 from modules.media.router import router as media_router
 from modules.properties.router import router as properties_router
@@ -34,7 +33,6 @@ from modules.realtime.router import router as realtime_router
 from modules.realtime.manager import pubsub_listener
 
 
-# Create tables (dev convenience; use Alembic for real migrations).
 Base.metadata.create_all(bind=engine)
 Path(MEDIA_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -42,7 +40,6 @@ Path(MEDIA_DIR).mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
-    # Start the Redis->WebSocket relay so Celery-produced events reach clients.
     task = asyncio.create_task(pubsub_listener())
     try:
         yield
@@ -72,11 +69,9 @@ app.add_middleware(
 )
 app.add_middleware(RequestLogMiddleware)
 
-# Auth & users
 app.include_router(auth_router)
 app.include_router(users_router)
 
-# Core marketplace
 app.include_router(properties_router)
 app.include_router(tours_router)
 app.include_router(favorites_router)
@@ -84,25 +79,21 @@ app.include_router(history_router)
 app.include_router(spatial_qa_router)
 app.include_router(agent_router)
 
-# Transactions
 app.include_router(bookings_router)
 app.include_router(payments_router)
 app.include_router(requests_router)
 app.include_router(messages_router)
 app.include_router(trackers_router)
 
-# Intelligence & moderation
 app.include_router(recommendations_router)
 app.include_router(complaints_router)
 app.include_router(admin_router)
 app.include_router(dashboard_router)
 
-# Notifications & realtime
 app.include_router(notifications_router)
 app.include_router(media_router)
 app.include_router(realtime_router)
 
-# Serve uploaded files
 app.mount("/media-files", StaticFiles(directory=MEDIA_DIR), name="media-files")
 
 
@@ -162,9 +153,6 @@ def health():
     return {"status": status, "database": db_ok, "redis": redis_ok}
 
 
-# ===== Frontend (single-page app) =====
-# Served last so API routes always take precedence. html=True makes "/" return
-# index.html and unknown paths fall back to it (client-side routing).
 _FRONTEND_DIR = Path(__file__).parent / "frontend"
 _FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -173,7 +161,7 @@ class NoCacheStaticFiles(StaticFiles):
     """Static files with caching disabled — avoids browsers serving stale JS/CSS
     during development (the source of 'nothing changed after reload')."""
 
-    def is_not_modified(self, response_headers, request_headers) -> bool:  # noqa: ARG002
+    def is_not_modified(self, response_headers, request_headers) -> bool:
         return False
 
     async def get_response(self, path, scope):

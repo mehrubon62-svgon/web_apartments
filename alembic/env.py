@@ -3,12 +3,10 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# Load app metadata + DB URL from the application itself.
 from config import DATABASE_URL
 from models import Base
 
 config = context.config
-# Inject the runtime DB URL (env-driven) into Alembic.
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:
@@ -24,7 +22,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,  # needed for SQLite ALTER support
+        render_as_batch=True,
     )
     with context.begin_transaction():
         context.run_migrations()

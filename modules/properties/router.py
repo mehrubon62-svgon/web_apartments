@@ -58,7 +58,6 @@ router = APIRouter(prefix="/properties", tags=["Properties"])
 
 
 def serialize(db: Session, prop: Property, user_id: int | None) -> PropertyOut:
-    # Seller's aggregate rating — relevant for sale listings (shown on cards/detail).
     s_avg, s_cnt = (None, 0)
     if prop.deal_type == DealType.sale and prop.seller_id:
         s_avg, s_cnt = seller_rating(db, prop.seller_id)
@@ -91,7 +90,6 @@ def serialize(db: Session, prop: Property, user_id: int | None) -> PropertyOut:
     )
 
 
-# ===== Catalog & filters =====
 
 @router.get("", response_model=PropertyList)
 def list_properties(
@@ -127,7 +125,6 @@ def list_properties(
     )
 
 
-# ===== Compare =====
 
 @router.get("/search", response_model=PropertyList)
 def search_text(
@@ -249,7 +246,6 @@ def nearby(
     )
 
 
-# ===== Create / read / update / delete =====
 
 @router.post("", response_model=PropertyOut, status_code=201)
 def create(
@@ -259,7 +255,6 @@ def create(
 ):
     payload = data.model_dump(exclude={"media"})
 
-    # Location: manual pin wins; otherwise geocode the address (Mapbox).
     if (payload.get("lat") is None or payload.get("lng") is None) and payload.get("address"):
         coords = geocode(payload["address"])
         if coords:
@@ -287,7 +282,6 @@ def retrieve(
     if not prop or prop.status == PropertyStatus.deleted:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Track the view (only for logged-in non-owners) and update recommendations.
     if current_user and prop.seller_id != current_user.id:
         from modules.history.crud import track_view
         track_view(db, current_user.id, prop.id)
@@ -314,7 +308,6 @@ def edit(
 
     fields = data.model_dump(exclude_unset=True)
 
-    # Re-geocode if the address changed but no explicit pin was provided.
     if fields.get("address") and "lat" not in fields and "lng" not in fields:
         coords = geocode(fields["address"])
         if coords:
@@ -323,7 +316,6 @@ def edit(
     old_price = prop.price
     prop = update_property(db, prop, fields)
 
-    # Price dropped -> let the tracker task notify watchers.
     if "price" in fields and fields["price"] is not None and prop.price < old_price:
         from modules.queue import enqueue
         from tasks import track_price_changes
@@ -347,7 +339,6 @@ def remove(
     return {"detail": "Property deleted"}
 
 
-# ===== Price history (sale) =====
 
 @router.get("/{property_id}/ai-review", response_model=AIReviewResult)
 def ai_review(
@@ -459,7 +450,6 @@ def price_history(
     return [PriceHistoryPoint.model_validate(p) for p in points]
 
 
-# ===== Mortgage calculator (sale) =====
 
 @router.post("/{property_id}/mortgage", response_model=MortgageResponse)
 def mortgage(
@@ -489,7 +479,6 @@ def mortgage(
     )
 
 
-# ===== Reviews (rent) =====
 
 @router.get("/{property_id}/reviews", response_model=list[ReviewOut])
 def list_reviews(
@@ -519,9 +508,6 @@ def add_review(
         raise HTTPException(status_code=404, detail="Property not found")
     if prop.seller_id == current_user.id:
         raise HTTPException(status_code=403, detail="You cannot review your own listing")
-    # Only buyers who actually transacted can review:
-    #  - rentals: a booking exists for this user + property
-    #  - sales: a viewing/purchase request was submitted by this user
     from models import Booking, PurchaseRequest, DealType
     if prop.deal_type == DealType.rent:
         has_deal = (
@@ -638,7 +624,6 @@ def can_review(
     }
 
 
-# ===== Availability calendar (rent) =====
 
 @router.get("/{property_id}/availability", response_model=list[AvailabilityOut])
 def get_availability(

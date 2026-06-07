@@ -47,7 +47,6 @@ def list_favorites(db: Session, user_id: int) -> list[Property]:
         .filter(Property.id.in_(property_ids), Property.status != PropertyStatus.deleted)
         .all()
     )
-    # Preserve favorite order
     order = {pid: i for i, pid in enumerate(property_ids)}
     props.sort(key=lambda p: order.get(p.id, 0))
     return props

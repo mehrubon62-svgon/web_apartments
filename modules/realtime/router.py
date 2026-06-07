@@ -53,7 +53,6 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.send_json({"event": "connected", "data": {"user_id": user.id}})
     try:
         while True:
-            # Client may send pings; we just echo a pong. No polling needed.
             msg = await ws.receive_json()
             if (msg or {}).get("event") == "ping":
                 await ws.send_json({"event": "pong", "data": {}})

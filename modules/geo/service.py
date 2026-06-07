@@ -26,7 +26,7 @@ def geocode(address: str) -> tuple[float, float] | None:
     features = data.get("features") or []
     if not features:
         return None
-    center = features[0].get("center")  # [lng, lat]
+    center = features[0].get("center")
     if not center or len(center) != 2:
         return None
     lng, lat = center

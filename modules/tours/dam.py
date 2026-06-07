@@ -51,17 +51,17 @@ def _iter_fields(buf: bytes, start: int, end: int):
         tag, i = _read_varint(buf, i)
         field = tag >> 3
         wt = tag & 7
-        if wt == 2:                       # length-delimited
+        if wt == 2:
             ln, i = _read_varint(buf, i)
             yield field, wt, (i, ln)
             i += ln
-        elif wt == 0:                     # varint
+        elif wt == 0:
             val, i = _read_varint(buf, i)
             yield field, wt, val
-        elif wt == 5:                     # 32-bit
+        elif wt == 5:
             yield field, wt, struct.unpack_from("<f", buf, i)[0]
             i += 4
-        elif wt == 1:                     # 64-bit
+        elif wt == 1:
             yield field, wt, struct.unpack_from("<d", buf, i)[0]
             i += 8
         else:
@@ -79,7 +79,7 @@ def parse_dam(data: bytes) -> list[dict]:
         positions = uvs = indices = None
         name = texture = ""
         for cf, cwt, cv in _iter_fields(data, cstart, cend):
-            if cf == 1 and cwt == 2:                  # vertex sub-buffer
+            if cf == 1 and cwt == 2:
                 vs, vl = cv
                 for vf, vwt, vv in _iter_fields(data, vs, vs + vl):
                     if vf == 1 and vwt == 2:
@@ -88,9 +88,8 @@ def parse_dam(data: bytes) -> list[dict]:
                     elif vf == 2 and vwt == 2:
                         uo, ul = vv
                         uvs = data[uo:uo + ul]
-            elif cf == 2 and cwt == 2:                # index sub-buffer
+            elif cf == 2 and cwt == 2:
                 is_, il = cv
-                # one nested length-delimited field holds the varint stream
                 for jf, jwt, jv in _iter_fields(data, is_, is_ + il):
                     if jf == 1 and jwt == 2:
                         io_, ilen = jv
@@ -153,7 +152,6 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
               if c["uvs"] else np.zeros((nv, 2), dtype="<f4"))
         idx = np.array(_decode_indices(c["indices"]), dtype=np.uint32)
         idx = idx[: (len(idx) // 3) * 3]
-        # keep only valid triangles
         idx = idx[idx < nv] if idx.size and idx.max() >= nv else idx
         all_pos.append(pos)
         all_uv.append(uv)
@@ -164,23 +162,14 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
     uv = np.concatenate(all_uv).astype(np.float32)
     idx = np.concatenate(all_idx).astype(np.uint32)
 
-    # world -> Y-up viewer space:  (p[a], p[up], -p[b])
     pos_y = np.empty_like(pos)
     pos_y[:, 0] = pos[:, fa]
     pos_y[:, 1] = pos[:, up]
     pos_y[:, 2] = -pos[:, fb]
     pos = pos_y
-    # glTF expects UV origin at top-left; flip V
     uv = uv.copy()
     uv[:, 1] = 1.0 - uv[:, 1]
 
-    # ---- robust outlier rejection ----------------------------------------
-    # For some models the .dam decode produces stray vertices tens of metres
-    # away (huge spikes) that wreck the dollhouse. The real geometry lives near
-    # the sweep positions (which come from JSON, not the .dam, so they're
-    # reliable). Drop any triangle that reaches far outside a generous box
-    # around the sweeps; if almost everything is outside, the decode is bad and
-    # we bail (the viewer then shows the clean marker-only dollhouse).
     tri_all = idx.reshape(-1, 3).astype(np.int64)
     n_tri_all = len(tri_all)
     if sweeps:
@@ -189,7 +178,7 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
     else:
         lo, hi = np.percentile(pos, 1, axis=0), np.percentile(pos, 99, axis=0)
     extent = hi - lo
-    margin = np.maximum(extent * 1.5, 8.0)   # walls/ceiling extend beyond sweeps
+    margin = np.maximum(extent * 1.5, 8.0)
     lo -= margin
     hi += margin
     finite = np.isfinite(pos).all(axis=1)
@@ -198,9 +187,6 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
     if n_tri_all and keep.sum() < 0.15 * n_tri_all:
         raise ValueError("dam decode produced mostly out-of-bounds geometry")
     kept_tris = tri_all[keep]
-    # Compact: keep only the vertices the surviving triangles use, so the stray
-    # outlier vertices no longer exist (they'd otherwise inflate the model's
-    # bounding box and wreck the dollhouse camera framing).
     used = np.unique(kept_tris)
     remap = np.full(len(pos), -1, dtype=np.int64)
     remap[used] = np.arange(len(used))
@@ -208,28 +194,24 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
     uv = uv[used]
     idx = remap[kept_tris].reshape(-1).astype(np.uint32)
 
-    # ---- orient triangles so normals face the room interior --------------
     tris = idx.reshape(-1, 3).astype(np.int64)
     v0 = pos[tris[:, 0]]; v1 = pos[tris[:, 1]]; v2 = pos[tris[:, 2]]
     centroid = (v0 + v1 + v2) / 3.0
-    fnormal = np.cross(v1 - v0, v2 - v0)            # CCW front-face normal
+    fnormal = np.cross(v1 - v0, v2 - v0)
 
     if sweeps:
-        sw = np.asarray(sweeps, dtype=np.float32)   # (S,3) viewer-frame
-        # nearest sweep per triangle (vectorised; T*S is small)
+        sw = np.asarray(sweeps, dtype=np.float32)
         d2 = ((centroid[:, None, :] - sw[None, :, :]) ** 2).sum(axis=2)
-        nearest = sw[np.argmin(d2, axis=1)]         # (T,3)
+        nearest = sw[np.argmin(d2, axis=1)]
         to_interior = nearest - centroid
     else:
-        # fallback: point toward the overall mesh centre
         to_interior = pos.mean(axis=0) - centroid
 
-    flip = (fnormal * to_interior).sum(axis=1) < 0  # normal faces outward -> flip
+    flip = (fnormal * to_interior).sum(axis=1) < 0
     tris[flip] = tris[flip][:, [0, 2, 1]]
     fnormal[flip] *= -1.0
     idx = tris.reshape(-1).astype(np.uint32)
 
-    # smooth vertex normals (accumulate oriented face normals)
     nlen = np.linalg.norm(fnormal, axis=1, keepdims=True)
     fn_unit = np.divide(fnormal, nlen, out=np.zeros_like(fnormal), where=nlen > 1e-12)
     normals = np.zeros_like(pos)
@@ -241,7 +223,6 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
     pmin = pos.min(axis=0).tolist()
     pmax = pos.max(axis=0).tolist()
 
-    # ---- binary buffer: positions | normals | uvs | indices | image ----
     bin_blob = bytearray()
     pos_bytes = pos.tobytes(); pos_off = len(bin_blob); bin_blob += pos_bytes; _pad4(bin_blob)
     nrm_bytes = normals.tobytes(); nrm_off = len(bin_blob); bin_blob += nrm_bytes; _pad4(bin_blob)
@@ -291,7 +272,6 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
                 "baseColorTexture": {"index": 0},
                 "metallicFactor": 0.0, "roughnessFactor": 1.0,
             },
-            # single-sided -> back-face culling gives the dollhouse cutaway
             "doubleSided": False,
             "name": "matterport",
         }]
@@ -308,15 +288,14 @@ def build_glb(chunks: list[dict], texture_jpg: bytes | None, axis_map=(0, 2, 1),
 
     glb = bytearray()
     glb += struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(json_bytes) + 8 + len(bin_blob))
-    glb += struct.pack("<II", len(json_bytes), 0x4E4F534A) + json_bytes      # JSON chunk
-    glb += struct.pack("<II", len(bin_blob), 0x004E4942) + bin_blob          # BIN chunk
+    glb += struct.pack("<II", len(json_bytes), 0x4E4F534A) + json_bytes
+    glb += struct.pack("<II", len(bin_blob), 0x004E4942) + bin_blob
     return bytes(glb)
 
 
 def _find_texture(zf: zipfile.ZipFile, names: list[str], tex_name: str) -> bytes | None:
     """Locate the full-resolution texture JPG for a chunk inside the ZIP."""
     base = tex_name.rsplit("/", 1)[-1]
-    # prefer the untiled high-res file: .../_texture_jpg_high/<base>
     for n in names:
         fn = n.rsplit("/", 1)[-1]
         if fn == base and "_texture_jpg_high/" in n:
@@ -340,8 +319,6 @@ def convert_dam_to_glb(zf: zipfile.ZipFile, names: list[str], dest: Path, axis_m
     dam_candidates = [n for n in names if n.endswith(".dam")]
     if not dam_candidates:
         return None
-    # Prefer the lighter 50k mesh: it decodes much faster and is plenty for the
-    # dollhouse/floor-plan. The 500k mesh would slow conversion a lot.
     dam_name = next((n for n in dam_candidates if "_50k" in n), dam_candidates[0])
     try:
         data = zf.read(dam_name)

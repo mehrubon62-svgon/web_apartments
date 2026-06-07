@@ -21,7 +21,6 @@ def _get_property(db: Session, property_id: int) -> Property:
 
 def _rooms(tour: Tour) -> list[dict]:
     data = tour.rooms or []
-    # Backwards-compat: tours stored as a bare list vs. {"rooms": [...]}
     if isinstance(data, dict):
         return data.get("rooms", [])
     return data
@@ -46,7 +45,6 @@ def get_tour(
     if not tour:
         raise HTTPException(status_code=404, detail="No tour for this property")
 
-    # The tour view counts as a view -> saved to history.
     from modules.history.crud import track_view
     track_view(db, current_user.id, property_id)
 
@@ -118,17 +116,14 @@ def pannellum_config(
         hotspots = []
         for link in room.get("links", []):
             dest = link["to_room_id"]
-            # Tooltip = where this arrow leads (Street-View style: "To: Kitchen").
             label = link.get("label") or name_by_id.get(dest) or "Go"
             hs = {
                 "type": "scene",
                 "text": label,
                 "yaw": link.get("yaw", 0.0),
-                # Default arrows sit low (on the floor) like Street View if no
-                # explicit pitch was authored.
                 "pitch": link.get("pitch", -25.0),
                 "sceneId": dest,
-                "cssClass": "pnlm-scene-arrow",  # frontend styles this as a floor arrow
+                "cssClass": "pnlm-scene-arrow",
             }
             if link.get("target_yaw") is not None:
                 hs["targetYaw"] = link["target_yaw"]
@@ -148,7 +143,7 @@ def pannellum_config(
     return {
         "default": {
             "firstScene": first_scene,
-            "sceneFadeDuration": 1000,  # smooth crossfade between panoramas
+            "sceneFadeDuration": 1000,
             "autoLoad": True,
         },
         "scenes": scenes,
@@ -166,9 +161,6 @@ def share_room(
     return ShareResponse(url=url)
 
 
-# ============================================================================
-# 3D tour (Matterport-style): upload a ZIP with skyboxes/ + mesh/ + metadata.json
-# ============================================================================
 import io
 import json
 import logging
@@ -177,13 +169,10 @@ from pathlib import Path
 
 _tours_log = logging.getLogger("nestora.tours")
 
-# Where extracted 3D tours live, and the public URL prefix that serves them.
 _TOURS3D_DIRNAME = "tours3d"
-_MAX_ZIP_MB = 4096  # 4 GB — Matterport dumps can be very large (full-res panos + mesh)
+_MAX_ZIP_MB = 4096
 _ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".json", ".glb", ".gltf", ".bin", ".hdr", ".ktx2"}
 
-# In-memory conversion progress per property, polled by the upload UI.
-# {property_id: {"stage": "upload|convert|done|error", "pct": int}}
 _3d_progress: dict[int, dict] = {}
 
 
@@ -230,7 +219,6 @@ def _generate_metadata(dest: Path) -> dict:
     skybox_files = sorted(
         [p for p in (dest / "skyboxes").glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}]
     ) if (dest / "skyboxes").exists() else []
-    # fall back: any images anywhere
     if not skybox_files:
         skybox_files = sorted([p for p in dest.rglob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}])
 
@@ -239,7 +227,6 @@ def _generate_metadata(dest: Path) -> dict:
     for i, img in enumerate(skybox_files):
         rel = img.relative_to(dest).as_posix()
         rid = f"room{i + 1}"
-        # chain rooms linearly so navigation works out of the box
         links = []
         if i > 0:
             links.append({"to": f"room{i}", "yaw": -90, "pitch": -8})
@@ -294,9 +281,6 @@ async def upload_3d_tour(
     _tours_log.info("3D upload START: property=%s filename=%s content_type=%s",
                     property_id, file.filename, file.content_type)
 
-    # Stream the upload to a temp file on disk (1 MB chunks) so a large ZIP —
-    # up to _MAX_ZIP_MB (4 GB) — is never held entirely in RAM. The size cap is
-    # enforced while streaming, and zipfile reads members lazily from the file.
     import os, tempfile, shutil
     limit = _MAX_ZIP_MB * 1024 * 1024
     tmp = tempfile.NamedTemporaryFile(prefix="tour3d_", suffix=".zip", delete=False)
@@ -324,17 +308,13 @@ async def upload_3d_tour(
             raise HTTPException(status_code=400, detail="ZIP has no usable files")
 
         dest = _tour3d_dir(property_id)
-        # wipe any previous upload for this property
         if dest.exists():
             shutil.rmtree(dest, ignore_errors=True)
         dest.mkdir(parents=True, exist_ok=True)
 
-        # ---- Matterport showcase dump? Convert cube skyboxes -> equirectangular. ----
         from modules.tours.matterport import is_matterport_dump, convert as convert_matterport, extract_model_id
         all_names = [m.filename.replace("\\", "/") for m in members]
         if is_matterport_dump(all_names):
-            # Pull the public Matterport model ID so we can embed the official
-            # Matterport player (its native 3D / dollhouse / floor-plan / movement).
             model_id = extract_model_id(zf, all_names)
             _tours_log.info("3D upload: matterport dump (%s members), converting…", len(members))
             _3d_progress[property_id] = {"stage": "convert", "pct": 1}
@@ -346,7 +326,7 @@ async def upload_3d_tour(
                 }
             try:
                 await run_in_threadpool(convert_matterport, zf, dest, _on_progress)
-            except Exception as exc:  # fall back to clean state if conversion fails
+            except Exception as exc:
                 shutil.rmtree(dest, ignore_errors=True)
                 dest.mkdir(parents=True, exist_ok=True)
                 _3d_progress[property_id] = {"stage": "error", "pct": 0}
@@ -375,7 +355,6 @@ async def upload_3d_tour(
                 "matterport_id": model_id,
             })
 
-        # Detect a common top-level folder to strip (Matterport exports often nest).
         names = all_names
         tops = {n.split("/")[0] for n in names if "/" in n}
         strip = ""
@@ -392,7 +371,6 @@ async def upload_3d_tour(
             with zf.open(info) as src, target.open("wb") as out:
                 shutil.copyfileobj(src, out, 1024 * 1024)
 
-        # Ensure metadata.json exists.
         meta_path = dest / "metadata.json"
         if not meta_path.exists():
             meta = _generate_metadata(dest)
@@ -403,9 +381,6 @@ async def upload_3d_tour(
 
         base_url = _tour3d_base_url(property_id)
 
-        # Persist a marker in the tour record (reuse the rooms JSON wrapper).
-        # NOTE: build a NEW dict — SQLAlchemy won't detect in-place mutation of a
-        # JSON column, so reassigning the same object reference wouldn't save.
         tour = db.query(Tour).filter(Tour.property_id == property_id).first()
         if tour and isinstance(tour.rooms, dict):
             wrapper = dict(tour.rooms)
@@ -538,8 +513,6 @@ def rename_3d_rooms(
         if rid in names:
             room["name"] = names[rid]
             changed += 1
-    # Write atomically: a NEW string to a temp file, then replace, so a crash
-    # mid-write can't corrupt the live metadata.json.
     tmp = meta_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(meta_path)

@@ -15,7 +15,6 @@ class SpatialQuestionIn(BaseModel):
     room_id: str | None = None
     zone_coords: ZoneCoords
     question: str = Field(min_length=1, max_length=1000)
-    # base64-encoded screenshot of the selected zone (no data: prefix)
     image_b64: str | None = None
 
 

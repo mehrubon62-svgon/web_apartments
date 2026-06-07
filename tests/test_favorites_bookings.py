@@ -9,7 +9,6 @@ def test_favorite_add_remove(client, buyer, listing):
 
 
 def test_booking_requires_rental(client, buyer, listing):
-    # listing is a SALE property -> booking should be rejected
     r = client.post("/bookings", headers=buyer["headers"],
                     json={"property_id": listing["id"], "start_date": "2026-07-01", "end_date": "2026-07-03"})
     assert r.status_code == 400
@@ -27,13 +26,11 @@ def test_booking_and_payment(client, buyer, seller):
     assert co["checkout_url"] and co["payment_token"]
 
     bid = co["booking_id"]
-    # Programmatic test payment
     r = client.post(f"/bookings/{bid}/pay-test", headers=buyer["headers"])
     assert r.status_code == 200
     assert r.json()["status"] == "confirmed"
     assert r.json()["payment_status"] == "paid"
 
-    # Overlapping dates now conflict
     r = client.post("/bookings", headers=buyer["headers"],
                     json={"property_id": rent["id"], "start_date": "2026-07-02", "end_date": "2026-07-05"})
     assert r.status_code == 409

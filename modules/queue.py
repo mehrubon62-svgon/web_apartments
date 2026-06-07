@@ -20,8 +20,8 @@ from typing import Callable
 
 from config import REDIS_URL
 
-_CACHE_TTL = 10.0          # seconds to trust a health-check result
-_PING_TIMEOUT = 0.5        # seconds for the Redis ping itself
+_CACHE_TTL = 10.0
+_PING_TIMEOUT = 0.5
 
 _lock = threading.Lock()
 _last_check = 0.0
@@ -63,7 +63,6 @@ def enqueue(task, *args, fallback: Callable[[], None] | None = None, **kwargs) -
             task.delay(*args, **kwargs)
             return True
         except Exception:
-            # Broker went away between the health check and now — fall through.
             pass
 
     if fallback is not None:

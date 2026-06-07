@@ -65,14 +65,12 @@ def process_spatial_qa(self, qa_id: int) -> dict:
         try:
             if not is_configured():
                 raise AIError("AI not configured")
-            # Infer answer language from the question (Cyrillic => Russian).
             lang = "ru" if any("\u0400" <= ch <= "\u04FF" for ch in (qa.question or "")) else "en"
             lang_name = "Russian" if lang == "ru" else "English"
             image_b64 = _read_image_b64(qa.image_url)
             if image_b64:
                 answer = ask_with_image(image_b64, qa.question, metadata, lang=lang)
             else:
-                # No screenshot — answer from metadata only, but stay honest about it.
                 answer = chat(
                     [
                         {
@@ -202,7 +200,6 @@ def moderate_seller(seller_id: int) -> dict:
         else:
             reasoning = "AI not configured; defaulted to warning."
 
-        # Apply
         if decision == ModerationDecision.ban:
             seller.status = UserStatus.banned
             notif_type = NotificationType.ban
@@ -277,7 +274,6 @@ def send_email_code(self, email: str, code: str, purpose: str) -> dict:
     subject, text, html = code_email(code, purpose, EMAIL_CODE_TTL_MIN)
     ok = send_email(email, subject, text, html)
     if not ok:
-        # Could be a transient SMTP issue; retry a couple of times.
         try:
             raise self.retry(exc=RuntimeError("email send failed"))
         except self.MaxRetriesExceededError:

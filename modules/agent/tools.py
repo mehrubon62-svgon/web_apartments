@@ -29,7 +29,6 @@ from modules.recommendations.crud import load_recommended_properties
 from modules.messages.crud import get_or_create_conversation, add_message
 
 
-# ===== Tool schemas (sent to the model) =====
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -239,7 +238,6 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-# ===== Executors =====
 
 def _serialize_brief(p: Property) -> dict:
     return {
@@ -284,7 +282,7 @@ def execute_tool(db: Session, user_id: int, name: str, args: dict[str, Any]) -> 
         return {"error": f"Unknown tool: {name}"}
     try:
         return handler(db, user_id, args)
-    except Exception as exc:  # never let a tool crash the agent loop
+    except Exception as exc:
         return {"error": str(exc)}
 
 
@@ -455,7 +453,6 @@ def _t_book_viewing(db, user_id, args):
         return {"error": "end_date must be after start_date."}
     if start < date.today():
         return {"error": "start_date must be in the future."}
-    # overlap check
     rows = (
         db.query(Booking)
         .filter(Booking.property_id == pid, Booking.status != BookingStatus.cancelled)

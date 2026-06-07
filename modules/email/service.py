@@ -32,7 +32,6 @@ def is_configured() -> bool:
 def send_email(to: str, subject: str, text: str, html: str | None = None) -> bool:
     """Send an email. Returns True on success, False if not configured / failed."""
     if not is_configured():
-        # Dev fallback: make the message visible in logs instead of failing.
         print(f"[email:dev] To: {to} | {subject}\n{text}")
         return False
 

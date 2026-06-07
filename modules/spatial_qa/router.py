@@ -62,8 +62,6 @@ def ask(
     db.commit()
     db.refresh(qa)
 
-    # Kick off async processing. If the broker is down, run it inline (in a
-    # background thread) so the answer still gets produced without blocking.
     from modules.queue import enqueue
     from tasks import process_spatial_qa
     enqueue(process_spatial_qa, qa.id, fallback=lambda: process_spatial_qa(qa.id))

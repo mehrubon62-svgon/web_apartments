@@ -211,7 +211,6 @@ def process_payment(
     except PaymentError as exc:
         return checkout_page(token, db=db, error=str(exc))
 
-    # Payment ok -> confirm the booking (this is our internal "webhook").
     booking = db.query(Booking).filter(Booking.id == session.booking_id).first()
     if booking:
         confirm_booking(db, booking)

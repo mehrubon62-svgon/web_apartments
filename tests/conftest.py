@@ -12,17 +12,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Point the app at a throwaway SQLite DB BEFORE importing app modules.
 os.environ["DATABASE_URL"] = "sqlite:///./test_nestora.db"
-# Disable real email sending in tests so verification codes are returned inline.
 os.environ["SMTP_USER"] = ""
 os.environ["SMTP_PASSWORD"] = ""
 
-import models  # noqa: E402
-from models import Base, get_db  # noqa: E402
-import main  # noqa: E402
+import models
+from models import Base, get_db
+import main
 
-# Dedicated test engine/session
 test_engine = create_engine(
     "sqlite:///./test_nestora.db", connect_args={"check_same_thread": False}
 )

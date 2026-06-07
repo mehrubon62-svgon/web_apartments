@@ -72,7 +72,6 @@ def set_password(db: Session, user: User, new_password: str) -> None:
     db.commit()
 
 
-# ---- Refresh tokens ----
 
 def create_refresh_token(db: Session, user_id: int) -> RefreshToken:
     token = secrets.token_urlsafe(48)
