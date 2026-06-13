@@ -80,6 +80,7 @@ export const EN = {
   'Прикрепить файл': 'Attach file', 'Ответить': 'Reply', 'Изменить': 'Edit', 'Удалить': 'Delete',
   'Сообщение удалено': 'Message deleted', 'Загрузка файла...': 'Uploading file...', 'Файл': 'File',
   'изменено': 'edited', 'вложение': 'attachment', 'Редактирование': 'Editing', 'Ответ': 'Reply',
+  'Удалить сообщение?': 'Delete this message?',
   // agent
   'ИИ-агент Nestora': 'Nestora AI Agent', 'Ищет, сравнивает и управляет объектами за вас через реальные инструменты': 'Searches, compares and manages properties for you via real tools',
   'Новый чат': 'New chat', 'Спросите что угодно про недвижимость...': 'Ask anything about real estate...',

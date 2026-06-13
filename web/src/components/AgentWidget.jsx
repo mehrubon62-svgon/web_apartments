@@ -115,6 +115,8 @@ function greeting(lang) {
 
 const CID_KEY = 'nestora_agent_cid';
 const BOX_KEY = 'nestora_agent_box';
+const FAB_KEY = 'nestora_agent_fab';
+const FAB_SIZE = 60;
 const MIN_W = 320, MIN_H = 380, MAX_W = 760, MAX_H = 900;
 const DEF_W = 384, DEF_H = 580;
 
@@ -223,6 +225,47 @@ export function AgentWidget() {
     return defaultBox();
   });
   const drag = useRef(null);
+
+  // ---- Draggable floating button (the round AI bubble), position persisted ----
+  const [fabPos, setFabPos] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem(FAB_KEY)); if (s && Number.isFinite(s.x) && Number.isFinite(s.y)) return s; } catch {}
+    return null;   // null => keep the default CSS corner placement
+  });
+  const fabDrag = useRef(null);
+  const fabMoved = useRef(false);
+  useEffect(() => { if (fabPos) localStorage.setItem(FAB_KEY, JSON.stringify(fabPos)); }, [fabPos]);
+  const clampFab = useCallback((x, y) => ({
+    x: Math.min(Math.max(x, 8), Math.max(8, window.innerWidth - FAB_SIZE - 8)),
+    y: Math.min(Math.max(y, 8), Math.max(8, window.innerHeight - FAB_SIZE - 8)),
+  }), []);
+  function onFabDown(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    fabDrag.current = { sx: e.clientX, sy: e.clientY, baseX: rect.left, baseY: rect.top };
+    fabMoved.current = false;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  }
+  function onFabMove(e) {
+    const d = fabDrag.current; if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (!fabMoved.current && Math.hypot(dx, dy) < 4) return;   // ignore tiny jitters
+    fabMoved.current = true;
+    setFabPos(clampFab(d.baseX + dx, d.baseY + dy));
+  }
+  function onFabUp(e) {
+    fabDrag.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  }
+  function onFabClick() {
+    if (fabMoved.current) { fabMoved.current = false; return; }   // was a drag, not a click
+    setOpen(true);
+  }
+  // keep the bubble on-screen after a viewport resize
+  useEffect(() => {
+    if (!fabPos) return;
+    const onResize = () => setFabPos((p) => (p ? clampFab(p.x, p.y) : p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fabPos, clampFab]);
 
   const clampBox = useCallback((b) => {
     const w = Math.min(Math.max(b.w, MIN_W), Math.min(MAX_W, window.innerWidth - 16));
@@ -431,7 +474,16 @@ export function AgentWidget() {
 
   return (
     <>
-      <button className={`agent-fab ${open ? 'hidden' : ''}`} onClick={() => setOpen(true)} title="Nestora AI" aria-label="AI">
+      <button
+        className={`agent-fab ${open ? 'hidden' : ''}`}
+        style={{ touchAction: 'none', ...(fabPos ? { left: fabPos.x, top: fabPos.y, right: 'auto', bottom: 'auto' } : null) }}
+        onPointerDown={onFabDown}
+        onPointerMove={onFabMove}
+        onPointerUp={onFabUp}
+        onClick={onFabClick}
+        title="Nestora AI — перетащите, чтобы переместить"
+        aria-label="AI"
+      >
         <Icon name="bot" size={26} />
       </button>
 
